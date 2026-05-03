@@ -126,6 +126,8 @@ function createWoodTexture() {
 }
 
 // 木紋層：覆蓋在 floor 上方，添加質感層次
+// 注意：transparent: true 不能搭 receiveShadow: true（Three.js 已知問題會讓
+// 陰影在 alpha 像素位置漏光、視覺上像陰影中央消失）。讓底下的 floor 接收陰影即可。
 const woodPlane = new THREE.Mesh(
   new THREE.PlaneGeometry(20, 20),
   new THREE.MeshStandardMaterial({
@@ -137,7 +139,7 @@ const woodPlane = new THREE.Mesh(
 );
 woodPlane.rotation.x = -Math.PI / 2;
 woodPlane.position.y = FLOOR_Y + 0.005;
-woodPlane.receiveShadow = true;
+// 不接收陰影：floor 已 receiveShadow，避免 transparent + receiveShadow 衝突
 scene.add(woodPlane);
 
 // 細格線：很淡的木紋暗示（紋理層之上、淡化避免打架）
