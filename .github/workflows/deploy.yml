@@ -28,7 +28,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        # 用 npm install 而非 ci — 與 test.yml 同因（vitest/vite 跨平台
+        # optional deps 在 npm ci 嚴格模式下會 fail）
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
