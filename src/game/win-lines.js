@@ -6,9 +6,7 @@ import { SIZE } from './board.js';
  * 列舉方式：對每個起點 + 26 個 3D 方向，檢查整條線是否落在棋盤內；
  * 用 Set 去除「正反向同一條線」的重複（例：(0,0,0)→(3,3,3) 與 (3,3,3)→(0,0,0)）。
  *
- * @typedef {[number, number, number]} Coord
- * @typedef {[Coord, Coord, Coord, Coord]} WinLine
- * @type {WinLine[]}
+ * @type {import('../types.js').WinLine[]}
  */
 export const WIN_LINES = (() => {
   const lines = [];
