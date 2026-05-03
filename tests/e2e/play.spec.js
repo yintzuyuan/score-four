@@ -65,6 +65,56 @@ test('Esc 取消選取（不會落子）', async ({ page }) => {
   await expect(page.locator('#turn-num')).toHaveText('第 1 手');
 });
 
+test('滑鼠點擊柱子：直接落子', async ({ page }) => {
+  const canvas = page.locator('canvas').first();
+  const box = await canvas.boundingBox();
+  await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
+  await expect(page.locator('#turn-num')).toHaveText('第 2 手');
+});
+
+test('滑鼠 hover 後按 Enter：直接落子（hover 已寫入 selected）', async ({ page }) => {
+  const canvas = page.locator('canvas').first();
+  const box = await canvas.boundingBox();
+  // hover 棋盤中央，pointermove 應寫入 selected
+  await canvas.hover({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
+  await page.waitForTimeout(150); // 等 pointermove 處理
+  // 直接按 Enter，應從 hover 位置落子（若 selected 沒被寫，Enter 只會初始化不落子）
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#turn-num')).toHaveText('第 2 手');
+});
+
+test('拖視角不誤觸落子（drag-vs-click 辨識）', async ({ page }) => {
+  const canvas = page.locator('canvas').first();
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width * 0.5;
+  const cy = box.y + box.height * 0.5;
+  // 模擬拖視角：在 canvas 中央按下 → 大幅移動 → 在棋盤範圍內放開
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 80, cy + 30, { steps: 10 });
+  await page.mouse.up();
+  // 拖視角結束時不該觸發落子，turn-num 仍為「第 1 手」
+  await expect(page.locator('#turn-num')).toHaveText('第 1 手');
+});
+
+test('滑鼠 hover → 鍵盤接管：ArrowKey 從 hover 位置開始移動', async ({ page }) => {
+  const canvas = page.locator('canvas').first();
+  const box = await canvas.boundingBox();
+  // 1. 滑鼠 hover canvas 中央寫入 selected
+  await canvas.hover({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
+  await page.waitForTimeout(150);
+  // 2. 模擬滑鼠離開 canvas（pointerleave 應 sticky 保留 selected）
+  await page.evaluate(() => {
+    const c = document.querySelector('canvas');
+    c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+  });
+  // 3. 按 ArrowKey + Enter，應從 hover 位置移動 1 格再落子
+  //    （若 pointerleave 清空 selected，Enter 只會 init 而不落子，turn-num 仍為 1）
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#turn-num')).toHaveText('第 2 手');
+});
+
 test('完成同柱 4 連勝：朱方勝畫面顯示', async ({ page }) => {
   // 同柱 4 顆：朱方落子 (1,1)、青方落子別處、朱方再落 (1,1)、青方別處... 共 4 朱 3 青
   // 簡化：直接連續 7 個 Enter（朱青交替），但每次回到同一柱會堆高

@@ -139,20 +139,7 @@ for (let x = 0; x < SIZE; x++) {
     hitbox.userData = { x, z };
     boardGroup.add(hitbox);
 
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(BEAD_R * 0.85, BEAD_R * 1.05, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x8b6f4e,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0,
-      })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(px, 0.01, pz);
-    boardGroup.add(ring);
-
-    poles.push({ mesh: pole, hitbox, x, z, hoverRing: ring });
+    poles.push({ mesh: pole, hitbox, x, z });
   }
 }
 
@@ -243,7 +230,7 @@ controls.zoomSpeed = 0.6;
 controls.rotateSpeed = 0.7;
 controls.saveState(); // 記錄初始狀態為 reset 目標
 
-// 拖拽期間關掉 hover ring（避免動到柱子的 hover 提示）
+// 拖拽視角期間：滑鼠用於旋轉，不該寫入 cursor 狀態
 let isDraggingView = false;
 controls.addEventListener('start', () => {
   isDraggingView = true;
@@ -269,11 +256,15 @@ function rotateAzimuthByKey(deg) {
 }
 
 /* ============================================================
-   點擊
+   點擊與滑鼠 hover：寫入共用的 selected 狀態
    ============================================================ */
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-let hoveredPole = null;
+
+// 拖視角 vs 點擊落子辨識：pointerdown 後若移動超過閾值，視為 drag，後續 click 抑制
+const DRAG_PIXEL_THRESHOLD = 5;
+let pointerDownXY = null;
+let wasDragGesture = false;
 
 function updatePointer(event) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -292,38 +283,62 @@ function getPickedPole() {
   return poles.find((p) => p.x === x && p.z === z);
 }
 
+function onPointerDown(event) {
+  pointerDownXY = { x: event.clientX, y: event.clientY };
+  wasDragGesture = false;
+}
+
 function onPointerMove(event) {
+  // 拖視角辨識：超過閾值即視為 drag，避免結束時 click 誤觸落子
+  if (pointerDownXY) {
+    const dx = event.clientX - pointerDownXY.x;
+    const dy = event.clientY - pointerDownXY.y;
+    if (Math.hypot(dx, dy) > DRAG_PIXEL_THRESHOLD) wasDragGesture = true;
+  }
   if (gameOver) return;
-  // 拖拽視角時不顯示 hover（避免誤導使用者）
   if (isDraggingView) {
-    if (hoveredPole) {
-      hoveredPole.hoverRing.material.opacity = 0;
-      hoveredPole = null;
-    }
     renderer.domElement.style.cursor = 'grabbing';
     return;
   }
   updatePointer(event);
   const pole = getPickedPole();
-  if (pole !== hoveredPole) {
-    if (hoveredPole) hoveredPole.hoverRing.material.opacity = 0;
-    hoveredPole = pole;
-    if (hoveredPole && columnHeight(board, hoveredPole.x, hoveredPole.z) < SIZE)
-      hoveredPole.hoverRing.material.opacity = 0.7;
-  }
   renderer.domElement.style.cursor =
     pole && columnHeight(board, pole.x, pole.z) < SIZE ? 'pointer' : 'grab';
+  if (!pole) return; // 沒命中柱子不動 selected（避免在棋盤外移動就清掉）
+  if (!selected || selected.x !== pole.x || selected.z !== pole.z) {
+    selected = { x: pole.x, z: pole.z };
+    updateCursor();
+  }
+}
+
+function onPointerUp() {
+  pointerDownXY = null;
+}
+
+function onPointerLeave() {
+  // 滑鼠離開 canvas 時 cursor 樣式還原；selected 黏著保留，讓鍵盤可從最後位置接手
+  renderer.domElement.style.cursor = '';
 }
 
 function onClick(event) {
   if (gameOver) return;
+  // 剛結束一次拖視角 → 抑制這次 click 避免誤觸落子
+  if (wasDragGesture) {
+    wasDragGesture = false;
+    return;
+  }
   updatePointer(event);
   const pole = getPickedPole();
   if (!pole) return;
+  // 同步 selected 到點擊位置（觸控直接 tap 時 pointermove 可能不會先觸發）
+  selected = { x: pole.x, z: pole.z };
   tryDrop(pole.x, pole.z);
 }
 
+renderer.domElement.addEventListener('pointerdown', onPointerDown);
 renderer.domElement.addEventListener('pointermove', onPointerMove);
+renderer.domElement.addEventListener('pointerup', onPointerUp);
+renderer.domElement.addEventListener('pointerleave', onPointerLeave);
 renderer.domElement.addEventListener('click', onClick);
 
 /* ============================================================
@@ -737,11 +752,6 @@ function animate() {
         b.landed = true;
       }
     }
-  }
-
-  if (hoveredPole && !gameOver) {
-    const t = performance.now() * 0.003;
-    hoveredPole.hoverRing.material.opacity = 0.5 + Math.sin(t) * 0.25;
   }
 
   // 勝負連線：280ms 漸入（從 0 → 0.95），完成後微脈動
