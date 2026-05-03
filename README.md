@@ -54,7 +54,8 @@ push 到 `main` 後，GitHub Actions 自動 build 並 deploy 到 GitHub Pages。
 | **P3a** | 視角控制改 OrbitControls                           |
 | **P3b** | 獲勝畫面重做（連線高亮為主）                       |
 | **P3c** | 鍵盤方向修正（screenDirToBoardDir）                |
-| **P3d** | 視覺/3D 質感（棋珠 rim light、UI 細節）            |
+| **P3d** | 規則說明改為 in-game overlay（取代 alert）         |
+| **P3e** | 視覺/3D 質感（棋珠 rim light、UI 細節）            |
 | **P4**  | 觸控手勢 + 行動裝置體驗                            |
 
 詳見 `docs/superpowers/specs/`（P1 結束後遷移自原始計畫檔）。

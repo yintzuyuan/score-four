@@ -89,6 +89,7 @@ score-four/
 - 視角控制目前用 H/V slider，將改為 OrbitControls 拖拽
 - 鍵盤方向投影（`screenDirToBoardDir`）在某些視角下不直覺，待調查
 - 獲勝後 overlay 全螢幕遮住連線本體，將改為側邊卡片
+- 規則按鈕用 `alert()` 跳瀏覽器原生視窗，將改為 in-game overlay（半透明背景、可關閉、首次自動顯示）
 - 棋珠堆疊時辨識度不足，需要 rim light/outline 處理
 
 ## 暫時不做（範圍外）
