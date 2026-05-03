@@ -641,3 +641,118 @@ button.btn.primary:hover {
     font-size: 15px;
   }
 }
+
+/* ============================================================
+   Splash 啟動畫面（首次造訪 editorial 開卷儀式）
+   ============================================================ */
+#canvas-wrap {
+  opacity: 0;
+  transition: opacity 0.5s ease 0.1s;
+}
+#canvas-wrap.is-ready {
+  opacity: 1;
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: opacity 0.4s ease;
+}
+
+.splash.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-eyebrow {
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.48em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  animation: splashRise 0.8s cubic-bezier(0.2, 0.85, 0.25, 1) backwards 0.1s;
+}
+
+.splash-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 96px;
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 4px 0;
+  animation: splashRise 0.8s cubic-bezier(0.2, 0.85, 0.25, 1) backwards 0.3s;
+}
+
+.splash-sub {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+  animation: splashRise 0.8s cubic-bezier(0.2, 0.85, 0.25, 1) backwards 0.55s;
+}
+
+.splash-skip {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 9px 16px;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+  animation: splashRise 0.6s cubic-bezier(0.2, 0.85, 0.25, 1) backwards 0.8s;
+}
+
+.splash-skip:hover,
+.splash-skip:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+@keyframes splashRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-eyebrow,
+  .splash-title,
+  .splash-sub,
+  .splash-skip {
+    animation: none;
+  }
+  #canvas-wrap {
+    transition: opacity 0.2s ease;
+  }
+}
+
+@media (max-width: 600px) {
+  .splash-title {
+    font-size: 64px;
+  }
+}

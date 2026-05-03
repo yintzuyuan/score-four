@@ -7,10 +7,13 @@ import { screenDirToBoardDir } from './game/screen-dir.js';
 /* ============================================================
    遊戲邏輯
    ============================================================ */
-const SPACING = 1.2;
+const SPACING = 1.2; // 柱距（橫向呼吸感）
 const BEAD_R = 0.45;
+// 球心垂直堆疊間距：球直徑 + 微小防 z-fight；不沿用 SPACING，避免 0.3 真空隙
+const BEAD_STACK_GAP = BEAD_R * 2 * 1.02;
 const POLE_R = 0.06;
-const POLE_H = SIZE * SPACING * 0.95;
+// 柱高：恰好包住 4 顆球（底層球底 → 頂層球頂 + 微小 margin）
+const POLE_H = (SIZE - 1) * BEAD_STACK_GAP + BEAD_R * 2 + 0.05;
 
 // 棋盤垂直範圍：底座底面 y=-BASE_THICKNESS（局部）→ 柱頂 y=POLE_H（局部）
 // 為了讓整個棋盤的「幾何中點」落在世界原點 (0,0,0)，需把 boardGroup 下移此中點值
@@ -54,6 +57,11 @@ scene.add(keyLight);
 const fillLight = new THREE.DirectionalLight(0xc8d6e0, 0.35);
 fillLight.position.set(-5, 6, -3);
 scene.add(fillLight);
+
+// Rim light：相機背後上方，補棋珠輪廓邊光（強化垂直堆疊辨識度）
+const rimLight = new THREE.DirectionalLight(0xfff5e8, 0.4);
+rimLight.position.set(-3, 8, -6);
+scene.add(rimLight);
 
 // 半球光：地面反射的暖色補光
 const hemi = new THREE.HemisphereLight(0xfff5e8, 0xb8a07a, 0.4);
@@ -183,15 +191,20 @@ const previewBead = new THREE.Mesh(
 );
 boardGroup.add(previewBead);
 
-const beadMat1 = new THREE.MeshStandardMaterial({
+// 棋珠：MeshPhysicalMaterial + clearcoat 取得瓷釉/玉石邊緣高光
+const beadMat1 = new THREE.MeshPhysicalMaterial({
   color: 0xc84238, // 朱紅
-  roughness: 0.35,
-  metalness: 0.05,
+  roughness: 0.5,
+  metalness: 0.15,
+  clearcoat: 0.4,
+  clearcoatRoughness: 0.15,
 });
-const beadMat2 = new THREE.MeshStandardMaterial({
+const beadMat2 = new THREE.MeshPhysicalMaterial({
   color: 0x3a7ca5, // 藍青
-  roughness: 0.35,
-  metalness: 0.05,
+  roughness: 0.5,
+  metalness: 0.15,
+  clearcoat: 0.4,
+  clearcoatRoughness: 0.15,
 });
 
 const beads = [];
@@ -361,7 +374,7 @@ function tryDrop(x, z) {
   const pz = (z - (SIZE - 1) / 2) * SPACING;
 
   // 棋珠也加進 boardGroup，保持與整體一致的座標系
-  const localTargetY = y * SPACING + BEAD_R + 0.05;
+  const localTargetY = y * BEAD_STACK_GAP + BEAD_R + 0.05;
   bead.position.set(px, POLE_H + 0.5, pz);
   boardGroup.add(bead);
 
@@ -374,6 +387,8 @@ function tryDrop(x, z) {
     targetY: localTargetY,
     velocity: 0,
     landed: false,
+    settling: false, // bounce 衰減後進入 0.3s 阻尼微震
+    settleStart: 0,
   });
 
   const winLine = checkWin(board, currentPlayer);
@@ -399,7 +414,7 @@ function tryDrop(x, z) {
 function beadLocalCenter([x, y, z]) {
   return new THREE.Vector3(
     (x - (SIZE - 1) / 2) * SPACING,
-    y * SPACING + BEAD_R + 0.05,
+    y * BEAD_STACK_GAP + BEAD_R + 0.05,
     (z - (SIZE - 1) / 2) * SPACING
   );
 }
@@ -669,7 +684,7 @@ function updateCursor() {
     previewBead.material.opacity = 0;
     cursorInner.material.color.setHex(0x8a7c6a);
   } else {
-    previewBead.position.set(px, nextY * SPACING + BEAD_R + 0.05, pz);
+    previewBead.position.set(px, nextY * BEAD_STACK_GAP + BEAD_R + 0.05, pz);
     const color = currentPlayer === 1 ? 0xc84238 : 0x3a7ca5;
     previewBead.material.color.setHex(color);
     previewBead.material.opacity = 0.45;
@@ -770,14 +785,31 @@ function animate() {
 
   for (const b of beads) {
     if (b.landed) continue;
-    b.velocity += 0.025;
-    b.mesh.position.y -= b.velocity;
-    if (b.mesh.position.y <= b.targetY) {
-      b.mesh.position.y = b.targetY;
-      if (b.velocity > 0.15) b.velocity = -b.velocity * 0.35;
-      else {
-        b.velocity = 0;
+    if (!b.settling) {
+      // 物理階段：自由落體 + bounce 衰減
+      b.velocity += 0.025;
+      b.mesh.position.y -= b.velocity;
+      if (b.mesh.position.y <= b.targetY) {
+        b.mesh.position.y = b.targetY;
+        if (b.velocity > 0.15) {
+          b.velocity = -b.velocity * 0.35;
+        } else {
+          // 衰減完成 → 進入 settling 階段（0.3s 阻尼微震取代直接 landed）
+          b.settling = true;
+          b.settleStart = performance.now();
+          b.velocity = 0;
+        }
+      }
+    } else {
+      // Settling 階段：sin 震動 + ease-out cubic 衰減（沉穩落地儀式）
+      const t = (performance.now() - b.settleStart) / 300;
+      if (t >= 1) {
+        b.mesh.position.y = b.targetY;
+        b.settling = false;
         b.landed = true;
+      } else {
+        const decay = Math.pow(1 - t, 3);
+        b.mesh.position.y = b.targetY + Math.sin(t * Math.PI * 6) * 0.015 * decay;
       }
     }
   }
@@ -805,6 +837,7 @@ function animate() {
   // 勝方棋珠微飄浮（sine wave ±0.04y）
   for (const b of winningBeads) {
     if (!b.isWinning || b.floatBase === undefined) continue;
+    if (b.settling) continue; // settling 中的珠不應被浮動覆蓋（雙保險）
     const t = performance.now() * 0.0018;
     b.mesh.position.y = b.floatBase + Math.sin(t + (b.x + b.z) * 0.5) * 0.04;
   }
@@ -829,9 +862,54 @@ if (typeof ResizeObserver !== 'undefined') {
 
 scores = { 1: 0, 2: 0 };
 newGame(false);
-maybeAutoShowRules();
 // 延後初始化以等 grid 佈局穩定
 requestAnimationFrame(() => {
   onResize();
   animate();
 });
+
+/* ============================================================
+   Splash 啟動畫面控制
+   ============================================================ */
+const SPLASH_KEY = 'score-four:visited';
+const SPLASH_HOLD_MS = 2000; // 文字停留時長
+const SPLASH_FADE_MS = 500; // fade-out 時長（與 CSS transition 對齊）
+
+const splashEl = document.getElementById('splash');
+const splashSkipBtn = document.getElementById('splash-skip');
+
+function dismissSplash(immediate = false) {
+  try {
+    localStorage.setItem(SPLASH_KEY, '1');
+  } catch {
+    // 私密模式 / localStorage 禁用：忽略，下次仍會播放（不阻擋）
+  }
+  wrap.classList.add('is-ready');
+  if (immediate) {
+    splashEl.remove();
+  } else {
+    splashEl.classList.add('is-leaving');
+    setTimeout(() => splashEl.remove(), SPLASH_FADE_MS);
+  }
+  controls.enabled = true;
+  maybeAutoShowRules();
+}
+
+function initSplash() {
+  let visited = false;
+  try {
+    visited = !!localStorage.getItem(SPLASH_KEY);
+  } catch {
+    // 容錯：視為首訪、不寫 localStorage
+  }
+  if (visited) {
+    dismissSplash(true);
+    return;
+  }
+  // 首訪：splash 期間鎖定 OrbitControls，避免拖拽干擾啟動序列
+  controls.enabled = false;
+  splashSkipBtn.addEventListener('click', () => dismissSplash(false));
+  setTimeout(() => dismissSplash(false), SPLASH_HOLD_MS);
+}
+
+initSplash();
