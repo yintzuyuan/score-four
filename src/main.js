@@ -38,10 +38,15 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// ACESFilmic tone mapping：cinematic 對比與飽和、linear→sRGB 館內色彩
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace; // 顯式設置防版本漂移
 wrap.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xfff5e8, 0.7));
-const keyLight = new THREE.DirectionalLight(0xfff2dc, 0.9);
+// 燈光重平衡：ACES 對中亮度區段保留最完整、需降 ambient 保 direct
+scene.add(new THREE.AmbientLight(0xfff5e8, 0.55));
+const keyLight = new THREE.DirectionalLight(0xfff2dc, 1.05);
 keyLight.position.set(6, 12, 4);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -49,41 +54,30 @@ keyLight.shadow.camera.left = -10;
 keyLight.shadow.camera.right = 10;
 keyLight.shadow.camera.top = 10;
 keyLight.shadow.camera.bottom = -10;
-keyLight.shadow.bias = -0.0005;
-keyLight.shadow.radius = 4;
+// 球體 self-shadowing 修正：bias 加深 + normalBias 沿法線偏移（對曲面最有效）
+// 修復「棋珠陰影中央破洞 + 棋珠疊加陰影破洞」shadow acne
+keyLight.shadow.bias = -0.0015;
+keyLight.shadow.normalBias = 0.02;
+keyLight.shadow.radius = 2.5; // 從 4 降到 2.5，避免過軟放大 acne
 scene.add(keyLight);
 
-// 補光：稍微帶一點冷色，模擬天光
+// 補光：稍微帶一點冷色，模擬天光（ACES 黑場壓縮會吃掉它，反而需要保住）
 const fillLight = new THREE.DirectionalLight(0xc8d6e0, 0.35);
 fillLight.position.set(-5, 6, -3);
 scene.add(fillLight);
 
 // Rim light：相機背後上方，補棋珠輪廓邊光（強化垂直堆疊辨識度）
-const rimLight = new THREE.DirectionalLight(0xfff5e8, 0.4);
+const rimLight = new THREE.DirectionalLight(0xfff5e8, 0.5);
 rimLight.position.set(-3, 8, -6);
 scene.add(rimLight);
 
 // 半球光：地面反射的暖色補光
-const hemi = new THREE.HemisphereLight(0xfff5e8, 0xb8a07a, 0.4);
+const hemi = new THREE.HemisphereLight(0xfff5e8, 0xb8a07a, 0.3);
 scene.add(hemi);
 
-// 地板：淺木桌面
-const FLOOR_Y = -BOARD_VISUAL_CENTER - 0.4;
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(20, 20),
-  new THREE.MeshStandardMaterial({
-    color: 0xe8d9bf,
-    roughness: 0.85,
-    metalness: 0,
-  })
-);
-floor.rotation.x = -Math.PI / 2;
-floor.position.y = FLOOR_Y;
-floor.receiveShadow = true;
-scene.add(floor);
-
 /**
- * 程序生成木紋紋理：noise + 沿 x 軸的細直線（年輪暗示）。
+ * 程序生成木紋紋理：底色 + noise + 沿 x 軸的細直線（年輪暗示）。
+ * 不透明 — 直接作為 floor 的 map，由 floor 自己接收陰影，不需額外 plane。
  * 純 canvas、無外部資源、無 shader。
  * @returns {THREE.CanvasTexture}
  */
@@ -93,21 +87,23 @@ function createWoodTexture() {
   canvas.width = SIZE_PX;
   canvas.height = SIZE_PX;
   const ctx = canvas.getContext('2d');
-  // 透明底（疊在 floor 上面）
-  ctx.clearRect(0, 0, SIZE_PX, SIZE_PX);
-  // Step 1：低頻 noise（紙纖維/木屑質感）
-  const img = ctx.createImageData(SIZE_PX, SIZE_PX);
+  // 底色：淺木桌面 #e8d9bf
+  ctx.fillStyle = '#e8d9bf';
+  ctx.fillRect(0, 0, SIZE_PX, SIZE_PX);
+  // Step 1：低頻 noise 疊上深咖啡（紙纖維/木屑質感）
+  const img = ctx.getImageData(0, 0, SIZE_PX, SIZE_PX);
   for (let i = 0; i < img.data.length; i += 4) {
     const v = Math.random();
-    const alpha = v < 0.6 ? 0 : Math.floor((v - 0.6) * 80); // 0..32 透明度
-    img.data[i] = 90; // 深咖啡 R
-    img.data[i + 1] = 70;
-    img.data[i + 2] = 50;
-    img.data[i + 3] = alpha;
+    if (v >= 0.6) {
+      const noise = (v - 0.6) * 0.18; // 0..0.072 混合比例
+      img.data[i] = Math.round(img.data[i] * (1 - noise) + 90 * noise);
+      img.data[i + 1] = Math.round(img.data[i + 1] * (1 - noise) + 70 * noise);
+      img.data[i + 2] = Math.round(img.data[i + 2] * (1 - noise) + 50 * noise);
+    }
   }
   ctx.putImageData(img, 0, 0);
   // Step 2：年輪細線（沿 x 軸隨機間距、極淡）
-  ctx.strokeStyle = 'rgba(120, 90, 60, 0.06)';
+  ctx.strokeStyle = 'rgba(120, 90, 60, 0.08)';
   ctx.lineWidth = 1;
   for (let i = 0; i < 24; i++) {
     const y = Math.random() * SIZE_PX;
@@ -121,26 +117,25 @@ function createWoodTexture() {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(2, 2);
+  tex.colorSpace = THREE.SRGBColorSpace; // canvas 是 sRGB、配合 ACES 顯式設定
   tex.needsUpdate = true;
   return tex;
 }
 
-// 木紋層：覆蓋在 floor 上方，添加質感層次
-// 注意：transparent: true 不能搭 receiveShadow: true（Three.js 已知問題會讓
-// 陰影在 alpha 像素位置漏光、視覺上像陰影中央消失）。讓底下的 floor 接收陰影即可。
-const woodPlane = new THREE.Mesh(
+// 地板：淺木桌面（map = 木紋紋理、單一 plane 直接接收陰影）
+const FLOOR_Y = -BOARD_VISUAL_CENTER - 0.4;
+const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(20, 20),
   new THREE.MeshStandardMaterial({
     map: createWoodTexture(),
-    transparent: true,
     roughness: 0.85,
     metalness: 0,
   })
 );
-woodPlane.rotation.x = -Math.PI / 2;
-woodPlane.position.y = FLOOR_Y + 0.005;
-// 不接收陰影：floor 已 receiveShadow，避免 transparent + receiveShadow 衝突
-scene.add(woodPlane);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = FLOOR_Y;
+floor.receiveShadow = true;
+scene.add(floor);
 
 // 細格線：很淡的木紋暗示（紋理層之上、淡化避免打架）
 const grid = new THREE.GridHelper(20, 20, 0xc8b394, 0xd4c4a8);
@@ -257,8 +252,10 @@ const previewBead = new THREE.Mesh(
 boardGroup.add(previewBead);
 
 // 棋珠：MeshPhysicalMaterial + clearcoat 取得瓷釉/玉石邊緣高光
+// 朱紅升一格亮度（#c84238 → #d04a3f）補 ACES tone curve 對紅色飽和的壓縮
+// 藍青在 ACES 下幾乎不變，保持原色
 const beadMat1 = new THREE.MeshPhysicalMaterial({
-  color: 0xc84238, // 朱紅
+  color: 0xd04a3f, // 朱紅（已補 ACES）
   roughness: 0.5,
   metalness: 0.15,
   clearcoat: 0.4,
@@ -497,7 +494,7 @@ function buildWinLineMesh(line, color) {
   const material = new THREE.MeshStandardMaterial({
     color,
     emissive: color,
-    emissiveIntensity: 0.85,
+    emissiveIntensity: 1.1, // ACES 啟動後 emissive 視覺強度被壓，補上修
     roughness: 0.25,
     metalness: 0.4,
     transparent: true,
@@ -891,12 +888,12 @@ function animate() {
       // ease-out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
       winLineMesh.material.opacity = eased * 0.95;
-      winLineMesh.material.emissiveIntensity = 0.4 + eased * 0.5;
+      winLineMesh.material.emissiveIntensity = 0.5 + eased * 0.6; // 補 ACES 壓縮
     } else {
       winLineMesh.userData.fullyVisible = true;
       const t = now * 0.0015;
       winLineMesh.material.opacity = 0.85 + Math.sin(t) * 0.1;
-      winLineMesh.material.emissiveIntensity = 0.85 + Math.sin(t * 1.3) * 0.15;
+      winLineMesh.material.emissiveIntensity = 1.1 + Math.sin(t * 1.3) * 0.2; // 補 ACES 壓縮
     }
   }
 
