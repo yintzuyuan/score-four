@@ -97,7 +97,7 @@ test('拖視角不誤觸落子（drag-vs-click 辨識）', async ({ page }) => {
   await expect(page.locator('#turn-num')).toHaveText('第 1 手');
 });
 
-test('滑鼠 hover → 鍵盤接管：ArrowKey 從 hover 位置開始移動', async ({ page }) => {
+test('滑鼠 hover → pointerleave 後 Enter 仍能落子（sticky selected）', async ({ page }) => {
   const canvas = page.locator('canvas').first();
   const box = await canvas.boundingBox();
   // 1. 滑鼠 hover canvas 中央寫入 selected
@@ -108,9 +108,10 @@ test('滑鼠 hover → 鍵盤接管：ArrowKey 從 hover 位置開始移動', as
     const c = document.querySelector('canvas');
     c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
   });
-  // 3. 按 ArrowKey + Enter，應從 hover 位置移動 1 格再落子
-  //    （若 pointerleave 清空 selected，Enter 只會 init 而不落子，turn-num 仍為 1）
-  await page.keyboard.press('ArrowUp');
+  // 3. 直接按 Enter（不按 ArrowKey）—— 關鍵 discrimination：
+  //    若 pointerleave 清空 selected，confirmSelection 看到 null 只會 init (1,1) 並 return
+  //    （不落子），turn-num 卡在第 1 手；只有 sticky 行為正確才會落子推進到第 2 手。
+  //    若混入 ArrowKey 會 mask 此 case（ArrowKey 也會把 null 初始化成 (1,1)），故省略。
   await page.keyboard.press('Enter');
   await expect(page.locator('#turn-num')).toHaveText('第 2 手');
 });

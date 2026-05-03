@@ -6,7 +6,7 @@
  *
  * 演算法（P3c 修正後，right-handed Y-up）：
  * 1. 由相機朝原點的方向決定棋盤的「forward」軸（投影到水平面）
- * 2. 「right」= up × forward 的水平分量，等同 forward 逆時針旋轉 90°，
+ * 2. 「right」= forward × up 的水平分量（推導見下方註解），
  *    使從 +Z 看原點時「螢幕右 = 世界 +X」、從 +X 看原點時「螢幕右 = 世界 -Z」
  * 3. 將 (screenDx, screenDz) 投影到 (right, forward) 的世界座標
  * 4. 取絕對值較大的軸；45° 邊界仍可能輕微抖動，hysteresis 留待後續 PR
@@ -29,7 +29,8 @@ export function screenDirToBoardDir(camera, screenDx, screenDz) {
   // 螢幕「上」對應到視線方向（往畫面深處）
   const forwardX = viewX / len;
   const forwardZ = viewZ / len;
-  // 螢幕「右」=（世界 up = +Y）× forward 的水平分量 → forward 逆時針 90°
+  // 螢幕「右」= forward × up 的水平分量（up = +Y）
+  // forward(fx,0,fz) × up(0,1,0) = (-fz, 0, fx) → rightX=-forwardZ, rightZ=forwardX
   const rightX = -forwardZ;
   const rightZ = forwardX;
 
