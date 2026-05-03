@@ -6,6 +6,11 @@ import { test, expect } from '@playwright/test';
  */
 
 test.beforeEach(async ({ page }) => {
+  // 預設「規則已讀」避免首次造訪 auto-show overlay 攔截後續互動。
+  // 想驗證 auto-show 行為的測試請另寫 (見 rules-overlay 相關 test)。
+  await page.addInitScript(() => {
+    window.localStorage.setItem('score-four:rules-seen', '1');
+  });
   await page.goto('/');
   await expect(page.locator('#turn-label')).toBeVisible();
 });
@@ -114,6 +119,51 @@ test('滑鼠 hover → pointerleave 後 Enter 仍能落子（sticky selected）'
   //    若混入 ArrowKey 會 mask 此 case（ArrowKey 也會把 null 初始化成 (1,1)），故省略。
   await page.keyboard.press('Enter');
   await expect(page.locator('#turn-num')).toHaveText('第 2 手');
+});
+
+test('規則 overlay：點規則按鈕開啟', async ({ page }) => {
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+  await page.locator('#btn-rules').click();
+  await expect(page.locator('#rules-overlay')).toBeVisible();
+  await expect(page.locator('#rules-title')).toHaveText('方垛式四子棋');
+});
+
+test('規則 overlay：× 按鈕關閉', async ({ page }) => {
+  await page.locator('#btn-rules').click();
+  await expect(page.locator('#rules-overlay')).toBeVisible();
+  await page.locator('#rules-close').click();
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+});
+
+test('規則 overlay：ESC 關閉（優先於勝負/取消選取）', async ({ page }) => {
+  await page.locator('#btn-rules').click();
+  await expect(page.locator('#rules-overlay')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+});
+
+test('規則 overlay：點背景關閉', async ({ page }) => {
+  await page.locator('#btn-rules').click();
+  await expect(page.locator('#rules-overlay')).toBeVisible();
+  // 用左上角 position 點 backdrop（避開中央被 card 蓋住的區域）
+  await page.locator('#rules-backdrop').click({ position: { x: 8, y: 8 } });
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+});
+
+test('規則 overlay：首次造訪自動顯示，再次造訪不顯示', async ({ browser }) => {
+  // 用全新 context 繞過 beforeEach 的 addInitScript（page-scoped 沒辦法在單測試覆蓋）
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.locator('#rules-overlay')).toBeVisible({ timeout: 2000 });
+  // 關閉應寫入 localStorage
+  await page.locator('#rules-close').click();
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+  // 再次 navigate（同 context 共享 localStorage）：不應自動顯示
+  await page.goto('/');
+  await expect(page.locator('#turn-label')).toBeVisible();
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+  await context.close();
 });
 
 test('完成同柱 4 連勝：朱方勝畫面顯示', async ({ page }) => {

@@ -22,6 +22,13 @@ async function waitForStableScene(page, settleMs = 800) {
 
 test.use({ viewport: VIEWPORT });
 
+test.beforeEach(async ({ page }) => {
+  // 同 play.spec.js：預設規則已讀避免 auto-show 干擾 baseline 截圖
+  await page.addInitScript(() => {
+    window.localStorage.setItem('score-four:rules-seen', '1');
+  });
+});
+
 test('初始畫面 baseline（無棋珠）', async ({ page }) => {
   await page.goto('/');
   await waitForStableScene(page);
