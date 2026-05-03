@@ -80,8 +80,9 @@ test('勝負畫面 baseline', async ({ page }) => {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter'); // 朱 (1,1) y=3 — 勝
 
-  await expect(page.locator('#winner-card')).toBeVisible({ timeout: 3000 });
-  await waitForStableScene(page, 800);
+  // 連線出現 (1080ms) + 棋珠飄浮 + 卡片入場 (1600ms) 完整跑完
+  await expect(page.locator('#winner-card')).toBeVisible({ timeout: 4000 });
+  await waitForStableScene(page, 1200);
 
   await expect(page).toHaveScreenshot('winner-p1.png', {
     maxDiffPixelRatio: 0.03,

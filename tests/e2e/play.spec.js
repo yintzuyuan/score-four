@@ -104,8 +104,8 @@ test('完成同柱 4 連勝：朱方勝畫面顯示', async ({ page }) => {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
 
-  // 等獲勝動畫（main.js 在 600ms 後 highlight、1100ms 後顯示 winner-card）
-  await expect(page.locator('#winner-card')).toBeVisible({ timeout: 3000 });
+  // 等獲勝動畫（600ms 開始連線、1080ms 連線完整、1600ms 卡片入場）
+  await expect(page.locator('#winner-card')).toBeVisible({ timeout: 4000 });
   await expect(page.locator('#winner-title')).toHaveText('朱方勝');
   await expect(page.locator('#score-p1')).toHaveText('1');
   await expect(page.locator('#score-p2')).toHaveText('0');

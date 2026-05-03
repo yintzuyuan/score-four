@@ -366,7 +366,8 @@ function tryDrop(x, z) {
     gameOver = true;
     const winningPlayer = currentPlayer;
     setTimeout(() => highlightWinLine(winLine, winningPlayer), 600);
-    setTimeout(() => showWinner(winningPlayer), 1100);
+    // 連線完整出現 + 棋珠飄浮先單獨展示 0.5 秒，再讓題詞置中入場
+    setTimeout(() => showWinner(winningPlayer), 1600);
     scores[currentPlayer]++;
     updateScoreboard();
   } else if (isBoardFull(board)) {
@@ -379,21 +380,43 @@ function tryDrop(x, z) {
   }
 }
 
-/** 沿勝方四顆棋珠中心建立光帶（THREE.Line）。 */
+/** 把棋盤座標 [x, y, z] 轉為棋珠中心的 boardGroup 局部座標。 */
+function beadLocalCenter([x, y, z]) {
+  return new THREE.Vector3(
+    (x - (SIZE - 1) / 2) * SPACING,
+    y * SPACING + BEAD_R + 0.05,
+    (z - (SIZE - 1) / 2) * SPACING
+  );
+}
+
+/**
+ * 「金線穿珠」— 沿勝方四顆棋珠中心建立有粗細的光柱（TubeGeometry）。
+ * 用 CatmullRomCurve3 做平滑路徑（即使是直線也讓 cap 處圓滑），
+ * MeshStandardMaterial + emissive 讓光柱有真實的光照與陰影互動。
+ */
 function buildWinLineMesh(line, color) {
-  const points = line.map(([x, y, z]) => {
-    const px = (x - (SIZE - 1) / 2) * SPACING;
-    const pz = (z - (SIZE - 1) / 2) * SPACING;
-    const py = y * SPACING + BEAD_R + 0.05;
-    return new THREE.Vector3(px, py, pz);
-  });
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({
+  const points = line.map(beadLocalCenter);
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0);
+  const TUBE_RADIUS = 0.07; // 比 POLE_R (0.06) 略粗，視覺上明顯
+  const geometry = new THREE.TubeGeometry(curve, 64, TUBE_RADIUS, 12, false);
+  const material = new THREE.MeshStandardMaterial({
     color,
+    emissive: color,
+    emissiveIntensity: 0.85,
+    roughness: 0.25,
+    metalness: 0.4,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0, // 從 0 漸入，由 animate loop 推進
   });
-  return new THREE.Line(geometry, material);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  // 自製 progress 屬性給逐段顯現用（0–1，用 clipping plane 模擬「延伸」）
+  mesh.userData = {
+    appearStartedAt: 0,
+    appearDuration: 280, // 從 0 → 1 的時間（ms）
+    fullyVisible: false,
+  };
+  return mesh;
 }
 
 function highlightWinLine(line, player) {
@@ -405,16 +428,22 @@ function highlightWinLine(line, player) {
       b.mesh.material.emissive = new THREE.Color(baseColor);
       b.mesh.material.emissiveIntensity = 0.6;
       b.mesh.scale.setScalar(1.18);
+      // 記錄飄浮基準 y，給 animate loop 做 sine 微飄
+      b.floatBase = b.targetY;
+      b.isWinning = true;
     }, i * 120);
   });
-  // 2. 四顆都亮起後，加上連線光帶
+  // 2. 四顆都亮起後，加上「金線穿珠」光柱
   setTimeout(() => {
     winLineMesh = buildWinLineMesh(line, baseColor);
+    winLineMesh.userData.appearStartedAt = performance.now();
     boardGroup.add(winLineMesh);
+    // 同步觸發 vignette
+    document.getElementById('vignette').classList.add('show');
   }, winningBeads.length * 120);
 }
 
-/** 清除勝負視覺（連線 + 棋珠發光）。新局或悔棋時呼叫。 */
+/** 清除勝負視覺（連線 + 棋珠發光 + vignette）。新局或悔棋時呼叫。 */
 function clearWinHighlight() {
   if (winLineMesh) {
     boardGroup.remove(winLineMesh);
@@ -427,8 +456,21 @@ function clearWinHighlight() {
     b.mesh.material.emissive = new THREE.Color(0x000000);
     b.mesh.material.emissiveIntensity = 0;
     b.mesh.scale.setScalar(1);
+    b.isWinning = false;
+    if (b.floatBase !== undefined) {
+      b.mesh.position.y = b.floatBase;
+    }
   });
   winningBeads = [];
+  document.getElementById('vignette').classList.remove('show');
+}
+
+/** 把 Date 格式化成「2026.05.04」風格題詞日期。 */
+function formatColophonDate(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}.${mm}.${dd}`;
 }
 
 function showWinner(player) {
@@ -436,25 +478,30 @@ function showWinner(player) {
   const eyebrow = document.getElementById('winner-eyebrow');
   const title = document.getElementById('winner-title');
   const sub = document.getElementById('winner-sub');
+  const meta = document.getElementById('winner-meta');
   const viewBtn = document.getElementById('winner-view');
   card.classList.remove('p1', 'p2', 'draw');
+  const date = formatColophonDate();
   if (player === 1) {
     card.classList.add('p1');
-    eyebrow.textContent = 'VICTORY · 勝負已分';
+    eyebrow.textContent = '勝 · VICTORY';
     title.textContent = '朱方勝';
     sub.textContent = `第 ${moveHistory.length} 手 連成一線`;
+    meta.textContent = `${date} · 對局 ${scores[1] + scores[2]}`;
     viewBtn.hidden = false;
   } else if (player === 2) {
     card.classList.add('p2');
-    eyebrow.textContent = 'VICTORY · 勝負已分';
+    eyebrow.textContent = '勝 · VICTORY';
     title.textContent = '青方勝';
     sub.textContent = `第 ${moveHistory.length} 手 連成一線`;
+    meta.textContent = `${date} · 對局 ${scores[1] + scores[2]}`;
     viewBtn.hidden = false;
   } else {
     card.classList.add('draw');
-    eyebrow.textContent = 'DRAW · 棋盤已滿';
+    eyebrow.textContent = '和 · DRAW';
     title.textContent = '和局';
-    sub.textContent = '64 子俱滿 無人連線';
+    sub.textContent = '六十四子俱滿 無人連成';
+    meta.textContent = `${date} · 對局 ${scores[1] + scores[2] + 1}`;
     viewBtn.hidden = true; // 和局沒連線，無棋盤可檢視
   }
   card.hidden = false;
@@ -697,10 +744,31 @@ function animate() {
     hoveredPole.hoverRing.material.opacity = 0.5 + Math.sin(t) * 0.25;
   }
 
-  // 勝負連線：脈動引導視線
+  // 勝負連線：280ms 漸入（從 0 → 0.95），完成後微脈動
   if (winLineMesh) {
-    const t = performance.now() * 0.003;
-    winLineMesh.material.opacity = 0.7 + Math.sin(t * 1.5) * 0.2;
+    const now = performance.now();
+    const progress = Math.min(
+      1,
+      (now - winLineMesh.userData.appearStartedAt) / winLineMesh.userData.appearDuration
+    );
+    if (progress < 1) {
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      winLineMesh.material.opacity = eased * 0.95;
+      winLineMesh.material.emissiveIntensity = 0.4 + eased * 0.5;
+    } else {
+      winLineMesh.userData.fullyVisible = true;
+      const t = now * 0.0015;
+      winLineMesh.material.opacity = 0.85 + Math.sin(t) * 0.1;
+      winLineMesh.material.emissiveIntensity = 0.85 + Math.sin(t * 1.3) * 0.15;
+    }
+  }
+
+  // 勝方棋珠微飄浮（sine wave ±0.04y）
+  for (const b of winningBeads) {
+    if (!b.isWinning || b.floatBase === undefined) continue;
+    const t = performance.now() * 0.0018;
+    b.mesh.position.y = b.floatBase + Math.sin(t + (b.x + b.z) * 0.5) * 0.04;
   }
 
   controls.update(); // damping 需要每幀 update
