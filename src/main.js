@@ -38,10 +38,15 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// ACESFilmic tone mapping：cinematic 對比與飽和、linear→sRGB 館內色彩
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace; // 顯式設置防版本漂移
 wrap.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xfff5e8, 0.7));
-const keyLight = new THREE.DirectionalLight(0xfff2dc, 0.9);
+// 燈光重平衡：ACES 對中亮度區段保留最完整、需降 ambient 保 direct
+scene.add(new THREE.AmbientLight(0xfff5e8, 0.55));
+const keyLight = new THREE.DirectionalLight(0xfff2dc, 1.05);
 keyLight.position.set(6, 12, 4);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -53,26 +58,73 @@ keyLight.shadow.bias = -0.0005;
 keyLight.shadow.radius = 4;
 scene.add(keyLight);
 
-// 補光：稍微帶一點冷色，模擬天光
+// 補光：稍微帶一點冷色，模擬天光（ACES 黑場壓縮會吃掉它，反而需要保住）
 const fillLight = new THREE.DirectionalLight(0xc8d6e0, 0.35);
 fillLight.position.set(-5, 6, -3);
 scene.add(fillLight);
 
 // Rim light：相機背後上方，補棋珠輪廓邊光（強化垂直堆疊辨識度）
-const rimLight = new THREE.DirectionalLight(0xfff5e8, 0.4);
+const rimLight = new THREE.DirectionalLight(0xfff5e8, 0.5);
 rimLight.position.set(-3, 8, -6);
 scene.add(rimLight);
 
 // 半球光：地面反射的暖色補光
-const hemi = new THREE.HemisphereLight(0xfff5e8, 0xb8a07a, 0.4);
+const hemi = new THREE.HemisphereLight(0xfff5e8, 0xb8a07a, 0.3);
 scene.add(hemi);
 
-// 地板：淺木桌面
+/**
+ * 程序生成木紋紋理：底色 + noise + 沿 x 軸的細直線（年輪暗示）。
+ * 不透明 — 直接作為 floor 的 map，由 floor 自己接收陰影，不需額外 plane。
+ * 純 canvas、無外部資源、無 shader。
+ * @returns {THREE.CanvasTexture}
+ */
+function createWoodTexture() {
+  const SIZE_PX = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE_PX;
+  canvas.height = SIZE_PX;
+  const ctx = canvas.getContext('2d');
+  // 底色：淺木桌面 #e8d9bf
+  ctx.fillStyle = '#e8d9bf';
+  ctx.fillRect(0, 0, SIZE_PX, SIZE_PX);
+  // Step 1：低頻 noise 疊上深咖啡（紙纖維/木屑質感）
+  const img = ctx.getImageData(0, 0, SIZE_PX, SIZE_PX);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random();
+    if (v >= 0.6) {
+      const noise = (v - 0.6) * 0.18; // 0..0.072 混合比例
+      img.data[i] = Math.round(img.data[i] * (1 - noise) + 90 * noise);
+      img.data[i + 1] = Math.round(img.data[i + 1] * (1 - noise) + 70 * noise);
+      img.data[i + 2] = Math.round(img.data[i + 2] * (1 - noise) + 50 * noise);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // Step 2：年輪細線（沿 x 軸隨機間距、極淡）
+  ctx.strokeStyle = 'rgba(120, 90, 60, 0.08)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 24; i++) {
+    const y = Math.random() * SIZE_PX;
+    const wobble = Math.random() * 6 - 3;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(SIZE_PX * 0.33, y + wobble, SIZE_PX * 0.66, y - wobble, SIZE_PX, y);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  tex.colorSpace = THREE.SRGBColorSpace; // canvas 是 sRGB、配合 ACES 顯式設定
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// 地板：淺木桌面（map = 木紋紋理、單一 plane 直接接收陰影）
 const FLOOR_Y = -BOARD_VISUAL_CENTER - 0.4;
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(20, 20),
   new THREE.MeshStandardMaterial({
-    color: 0xe8d9bf,
+    map: createWoodTexture(),
     roughness: 0.85,
     metalness: 0,
   })
@@ -82,11 +134,11 @@ floor.position.y = FLOOR_Y;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// 細格線：很淡的木紋暗示
+// 細格線：很淡的木紋暗示（紋理層之上、淡化避免打架）
 const grid = new THREE.GridHelper(20, 20, 0xc8b394, 0xd4c4a8);
 grid.position.y = FLOOR_Y + 0.01;
 grid.material.transparent = true;
-grid.material.opacity = 0.35;
+grid.material.opacity = 0.2; // 木紋紋理已提供質感、grid 線淡化避免打架
 scene.add(grid);
 
 /* ============================================================
@@ -181,10 +233,15 @@ cursorInner.position.y = 0.02;
 boardGroup.add(cursorInner);
 
 // 預覽棋珠：半透明，浮在當前柱頂上方
+// 用 MeshStandardMaterial + 微 emissive 讓預覽球反射環境光、陰影面也不死黑
 const previewBead = new THREE.Mesh(
   new THREE.SphereGeometry(BEAD_R, 24, 18),
-  new THREE.MeshBasicMaterial({
+  new THREE.MeshStandardMaterial({
     color: 0xc84238,
+    emissive: 0xc84238,
+    emissiveIntensity: 0.15,
+    roughness: 0.6,
+    metalness: 0.1,
     transparent: true,
     opacity: 0,
   })
@@ -192,8 +249,10 @@ const previewBead = new THREE.Mesh(
 boardGroup.add(previewBead);
 
 // 棋珠：MeshPhysicalMaterial + clearcoat 取得瓷釉/玉石邊緣高光
+// 朱紅升一格亮度（#c84238 → #d04a3f）補 ACES tone curve 對紅色飽和的壓縮
+// 藍青在 ACES 下幾乎不變，保持原色
 const beadMat1 = new THREE.MeshPhysicalMaterial({
-  color: 0xc84238, // 朱紅
+  color: 0xd04a3f, // 朱紅（已補 ACES）
   roughness: 0.5,
   metalness: 0.15,
   clearcoat: 0.4,
@@ -432,7 +491,7 @@ function buildWinLineMesh(line, color) {
   const material = new THREE.MeshStandardMaterial({
     color,
     emissive: color,
-    emissiveIntensity: 0.85,
+    emissiveIntensity: 1.1, // ACES 啟動後 emissive 視覺強度被壓，補上修
     roughness: 0.25,
     metalness: 0.4,
     transparent: true,
@@ -687,6 +746,7 @@ function updateCursor() {
     previewBead.position.set(px, nextY * BEAD_STACK_GAP + BEAD_R + 0.05, pz);
     const color = currentPlayer === 1 ? 0xc84238 : 0x3a7ca5;
     previewBead.material.color.setHex(color);
+    previewBead.material.emissive.setHex(color);
     previewBead.material.opacity = 0.45;
     cursorInner.material.color.setHex(color);
   }
@@ -825,12 +885,12 @@ function animate() {
       // ease-out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
       winLineMesh.material.opacity = eased * 0.95;
-      winLineMesh.material.emissiveIntensity = 0.4 + eased * 0.5;
+      winLineMesh.material.emissiveIntensity = 0.5 + eased * 0.6; // 補 ACES 壓縮
     } else {
       winLineMesh.userData.fullyVisible = true;
       const t = now * 0.0015;
       winLineMesh.material.opacity = 0.85 + Math.sin(t) * 0.1;
-      winLineMesh.material.emissiveIntensity = 0.85 + Math.sin(t * 1.3) * 0.15;
+      winLineMesh.material.emissiveIntensity = 1.1 + Math.sin(t * 1.3) * 0.2; // 補 ACES 壓縮
     }
   }
 
