@@ -181,10 +181,15 @@ cursorInner.position.y = 0.02;
 boardGroup.add(cursorInner);
 
 // 預覽棋珠：半透明，浮在當前柱頂上方
+// 用 MeshStandardMaterial + 微 emissive 讓預覽球反射環境光、陰影面也不死黑
 const previewBead = new THREE.Mesh(
   new THREE.SphereGeometry(BEAD_R, 24, 18),
-  new THREE.MeshBasicMaterial({
+  new THREE.MeshStandardMaterial({
     color: 0xc84238,
+    emissive: 0xc84238,
+    emissiveIntensity: 0.15,
+    roughness: 0.6,
+    metalness: 0.1,
     transparent: true,
     opacity: 0,
   })
@@ -687,6 +692,7 @@ function updateCursor() {
     previewBead.position.set(px, nextY * BEAD_STACK_GAP + BEAD_R + 0.05, pz);
     const color = currentPlayer === 1 ? 0xc84238 : 0x3a7ca5;
     previewBead.material.color.setHex(color);
+    previewBead.material.emissive.setHex(color);
     previewBead.material.opacity = 0.45;
     cursorInner.material.color.setHex(color);
   }
