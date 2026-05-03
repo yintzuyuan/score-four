@@ -23,7 +23,10 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        # npm install（不是 ci）— 因 vitest 4 / vite 5 / esbuild 0.28 含
+        # platform-specific optional deps，npm ci 嚴格比對 lock file 會在
+        # 跨平台時抱怨 "Missing: @emnapi/core" 等。npm install 會補齊缺項。
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
