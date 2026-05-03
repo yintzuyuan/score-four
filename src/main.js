@@ -1,9 +1,9 @@
 import * as THREE from 'three';
+import { newBoard, columnHeight, isBoardFull, SIZE } from './game/board.js';
 
 /* ============================================================
    遊戲邏輯
    ============================================================ */
-const SIZE = 4;
 const SPACING = 1.2;
 const BEAD_R = 0.45;
 const POLE_R = 0.06;
@@ -18,17 +18,6 @@ const BOARD_VISUAL_CENTER = (BOARD_MIN_Y + BOARD_MAX_Y) / 2; // 真正幾何中�
 
 let board, currentPlayer, moveHistory, gameOver, scores;
 let selected = null; // 鍵盤選取的格子 {x, z}，null 表示未啟用
-
-function newBoard() {
-  return Array.from({ length: SIZE }, () =>
-    Array.from({ length: SIZE }, () => Array(SIZE).fill(0))
-  );
-}
-function columnHeight(x, z) {
-  let h = 0;
-  while (h < SIZE && board[x][z][h] !== 0) h++;
-  return h;
-}
 
 const winLines = (() => {
   const lines = [];
@@ -62,11 +51,6 @@ function checkWin(player) {
   for (const line of winLines)
     if (line.every(([x, y, z]) => board[x][z][y] === player)) return line;
   return null;
-}
-function isBoardFull() {
-  for (let x = 0; x < SIZE; x++)
-    for (let z = 0; z < SIZE; z++) if (columnHeight(x, z) < SIZE) return false;
-  return true;
 }
 
 /* ============================================================
@@ -361,11 +345,11 @@ function onPointerMove(event) {
   if (pole !== hoveredPole) {
     if (hoveredPole) hoveredPole.hoverRing.material.opacity = 0;
     hoveredPole = pole;
-    if (hoveredPole && columnHeight(hoveredPole.x, hoveredPole.z) < SIZE)
+    if (hoveredPole && columnHeight(board, hoveredPole.x, hoveredPole.z) < SIZE)
       hoveredPole.hoverRing.material.opacity = 0.7;
   }
   renderer.domElement.style.cursor =
-    pole && columnHeight(pole.x, pole.z) < SIZE ? 'pointer' : 'default';
+    pole && columnHeight(board, pole.x, pole.z) < SIZE ? 'pointer' : 'default';
 }
 
 function onClick(event) {
@@ -384,7 +368,7 @@ renderer.domElement.addEventListener('click', onClick);
    ============================================================ */
 function tryDrop(x, z) {
   if (gameOver) return;
-  const y = columnHeight(x, z);
+  const y = columnHeight(board, x, z);
   if (y >= SIZE) return;
 
   board[x][z][y] = currentPlayer;
@@ -421,7 +405,7 @@ function tryDrop(x, z) {
     setTimeout(() => showWinner(currentPlayer), 1100);
     scores[currentPlayer]++;
     updateScoreboard();
-  } else if (isBoardFull()) {
+  } else if (isBoardFull(board)) {
     gameOver = true;
     setTimeout(() => showWinner(0), 600);
   } else {
@@ -586,7 +570,7 @@ function updateCursor() {
   cursorInner.position.z = pz;
 
   // 預覽棋珠位置：當前柱子下一個會落到的位置
-  const nextY = columnHeight(selected.x, selected.z);
+  const nextY = columnHeight(board, selected.x, selected.z);
   if (nextY >= SIZE) {
     // 滿了：藏起預覽棋珠，內環變灰
     previewBead.material.opacity = 0;
@@ -657,7 +641,7 @@ function confirmSelection() {
     updateCursor();
     return;
   }
-  if (columnHeight(selected.x, selected.z) >= SIZE) return;
+  if (columnHeight(board, selected.x, selected.z) >= SIZE) return;
   tryDrop(selected.x, selected.z);
   // 落子後游標保持在原位（換另一方時可能會想往別處走）
   updateCursor();
