@@ -99,16 +99,8 @@ canvas {
   background-color: rgba(253, 248, 236, 0.92);
   /* 紙纖維程序紋理：淺木 + 深咖啡兩層 radial-gradient 偏移錯位 */
   background-image:
-    radial-gradient(
-      ellipse at 20% 30%,
-      rgba(168, 124, 79, 0.04) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 70%,
-      rgba(61, 52, 42, 0.03) 0%,
-      transparent 55%
-    );
+    radial-gradient(ellipse at 20% 30%, rgba(168, 124, 79, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 70%, rgba(61, 52, 42, 0.03) 0%, transparent 55%);
   border: 1px solid var(--line);
   pointer-events: none;
   box-shadow:
