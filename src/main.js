@@ -842,9 +842,54 @@ if (typeof ResizeObserver !== 'undefined') {
 
 scores = { 1: 0, 2: 0 };
 newGame(false);
-maybeAutoShowRules();
 // 延後初始化以等 grid 佈局穩定
 requestAnimationFrame(() => {
   onResize();
   animate();
 });
+
+/* ============================================================
+   Splash 啟動畫面控制
+   ============================================================ */
+const SPLASH_KEY = 'score-four:visited';
+const SPLASH_HOLD_MS = 2000; // 文字停留時長
+const SPLASH_FADE_MS = 500; // fade-out 時長（與 CSS transition 對齊）
+
+const splashEl = document.getElementById('splash');
+const splashSkipBtn = document.getElementById('splash-skip');
+
+function dismissSplash(immediate = false) {
+  try {
+    localStorage.setItem(SPLASH_KEY, '1');
+  } catch {
+    // 私密模式 / localStorage 禁用：忽略，下次仍會播放（不阻擋）
+  }
+  wrap.classList.add('is-ready');
+  if (immediate) {
+    splashEl.remove();
+  } else {
+    splashEl.classList.add('is-leaving');
+    setTimeout(() => splashEl.remove(), SPLASH_FADE_MS);
+  }
+  controls.enabled = true;
+  maybeAutoShowRules();
+}
+
+function initSplash() {
+  let visited = false;
+  try {
+    visited = !!localStorage.getItem(SPLASH_KEY);
+  } catch {
+    // 容錯：視為首訪、不寫 localStorage
+  }
+  if (visited) {
+    dismissSplash(true);
+    return;
+  }
+  // 首訪：splash 期間鎖定 OrbitControls，避免拖拽干擾啟動序列
+  controls.enabled = false;
+  splashSkipBtn.addEventListener('click', () => dismissSplash(false));
+  setTimeout(() => dismissSplash(false), SPLASH_HOLD_MS);
+}
+
+initSplash();

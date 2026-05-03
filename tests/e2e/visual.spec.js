@@ -23,9 +23,10 @@ async function waitForStableScene(page, settleMs = 800) {
 test.use({ viewport: VIEWPORT });
 
 test.beforeEach(async ({ page }) => {
-  // 同 play.spec.js：預設規則已讀避免 auto-show 干擾 baseline 截圖
+  // 同 play.spec.js：規則已讀 + splash 已看過，避免 overlay 干擾 baseline
   await page.addInitScript(() => {
     window.localStorage.setItem('score-four:rules-seen', '1');
+    window.localStorage.setItem('score-four:visited', '1');
   });
 });
 

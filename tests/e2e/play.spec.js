@@ -7,9 +7,11 @@ import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   // 預設「規則已讀」避免首次造訪 auto-show overlay 攔截後續互動。
-  // 想驗證 auto-show 行為的測試請另寫 (見 rules-overlay 相關 test)。
+  // 預設「splash 已看過」避免啟動畫面阻擋 canvas 互動。
+  // 想驗證 auto-show / splash 首訪行為的測試請另寫。
   await page.addInitScript(() => {
     window.localStorage.setItem('score-four:rules-seen', '1');
+    window.localStorage.setItem('score-four:visited', '1');
   });
   await page.goto('/');
   await expect(page.locator('#turn-label')).toBeVisible();
@@ -163,6 +165,10 @@ test('規則 overlay：首次造訪自動顯示，再次造訪不顯示', async 
   // 用全新 context 繞過 beforeEach 的 addInitScript（page-scoped 沒辦法在單測試覆蓋）
   const context = await browser.newContext();
   const page = await context.newPage();
+  // 焦點是規則 auto-show 行為，預設 splash 已看過避免攔截
+  await page.addInitScript(() => {
+    window.localStorage.setItem('score-four:visited', '1');
+  });
   await page.goto('/');
   await expect(page.locator('#rules-overlay')).toBeVisible({ timeout: 2000 });
   // 關閉應寫入 localStorage
