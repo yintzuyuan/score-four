@@ -7,7 +7,7 @@ import { screenDirToBoardDir } from '../../src/game/screen-dir.js';
  */
 const cam = (x, z) => ({ position: { x, y: 5, z } });
 
-describe('screenDirToBoardDir — baseline（凍結 P1 行為，P3c 修正前）', () => {
+describe('screenDirToBoardDir — P3c 修正後行為（right-handed Y-up）', () => {
   describe('相機位於正 +Z 方向（最常見的初始視角）', () => {
     const camera = cam(0, 14);
 
@@ -19,15 +19,13 @@ describe('screenDirToBoardDir — baseline（凍結 P1 行為，P3c 修正前）
       expect(screenDirToBoardDir(camera, 0, -1)).toEqual({ dx: 0, dz: 1 });
     });
 
-    // 註：以下「右 → -X」、「左 → +X」是 P3c 待修的「不直覺」行為之一。
-    // 從 +Z 看原點時使用者期待「右 = +X」（right-handed Y-up），
-    // 但目前實作將「螢幕右」算為 forward 順時針旋轉 90°，得到 -X。
-    test('「右」(1, 0) → 棋盤 -X（baseline；P3c 應改為 +X）', () => {
-      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: -1, dz: 0 });
+    // P3c 修正：right-handed Y-up 約定下，從 +Z 看原點時「螢幕右 = 世界 +X」。
+    test('「右」(1, 0) → 棋盤 +X', () => {
+      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: 1, dz: 0 });
     });
 
-    test('「左」(-1, 0) → 棋盤 +X（baseline；P3c 應改為 -X）', () => {
-      expect(screenDirToBoardDir(camera, -1, 0)).toEqual({ dx: 1, dz: 0 });
+    test('「左」(-1, 0) → 棋盤 -X', () => {
+      expect(screenDirToBoardDir(camera, -1, 0)).toEqual({ dx: -1, dz: 0 });
     });
   });
 
@@ -38,8 +36,9 @@ describe('screenDirToBoardDir — baseline（凍結 P1 行為，P3c 修正前）
       expect(screenDirToBoardDir(camera, 0, 1)).toEqual({ dx: -1, dz: 0 });
     });
 
-    test('「右」(1, 0) → 棋盤 +Z（baseline；P3c 視期望可能改）', () => {
-      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: 0, dz: 1 });
+    // 從 +X 看原點：forward = -X，up = +Y，right = forward × up 之 Y-up 慣例 = -Z
+    test('「右」(1, 0) → 棋盤 -Z', () => {
+      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: 0, dz: -1 });
     });
   });
 
@@ -48,6 +47,23 @@ describe('screenDirToBoardDir — baseline（凍結 P1 行為，P3c 修正前）
 
     test('「上」(0, 1) → 棋盤 +Z（從 -Z 看原點，深處方向是 +Z）', () => {
       expect(screenDirToBoardDir(camera, 0, 1)).toEqual({ dx: 0, dz: 1 });
+    });
+
+    // 對稱於 +Z 視角：從 -Z 看原點，「螢幕右 = 世界 -X」
+    test('「右」(1, 0) → 棋盤 -X', () => {
+      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: -1, dz: 0 });
+    });
+  });
+
+  describe('相機位於 -X 方向（從另一側面看）', () => {
+    const camera = cam(-14, 0);
+
+    test('「右」(1, 0) → 棋盤 +Z', () => {
+      expect(screenDirToBoardDir(camera, 1, 0)).toEqual({ dx: 0, dz: 1 });
+    });
+
+    test('「上」(0, 1) → 棋盤 +X', () => {
+      expect(screenDirToBoardDir(camera, 0, 1)).toEqual({ dx: 1, dz: 0 });
     });
   });
 
@@ -60,14 +76,13 @@ describe('screenDirToBoardDir — baseline（凍結 P1 行為，P3c 修正前）
     });
   });
 
-  describe('45 度斜視角（邊界 case，P3c 重點處理區）', () => {
+  describe('45 度斜視角（邊界 case，hysteresis 屬未來 PR 範圍）', () => {
     const camera = cam(10, 10); // 45 度方位角
 
-    test('「上」(0, 1) — 兩軸接近時的軸向選擇（baseline）', () => {
-      // 在 45° 視角下，wx 和 wz 量級接近，目前邏輯選 |wx| ≤ |wz| 時走 dz 軸。
-      // 若計算讓 |wx| 略大則走 dx — 這是「不直覺」的根源之一。
+    test('「上」(0, 1) — 兩軸接近時仍回傳合法格式', () => {
+      // 在 45° 視角下，wx 與 wz 量級接近，軸選擇可能隨數值噪音翻轉。
+      // 防呆 (hysteresis) 留待後續 PR；本測試只確認回傳格式合法。
       const result = screenDirToBoardDir(camera, 0, 1);
-      // 確認回傳格式正確（軸向選擇本身屬 P3c）
       expect(result).toHaveProperty('dx');
       expect(result).toHaveProperty('dz');
       expect(Math.abs(result.dx) + Math.abs(result.dz)).toBe(1);
