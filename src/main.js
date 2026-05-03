@@ -387,6 +387,8 @@ function tryDrop(x, z) {
     targetY: localTargetY,
     velocity: 0,
     landed: false,
+    settling: false, // bounce 衰減後進入 0.3s 阻尼微震
+    settleStart: 0,
   });
 
   const winLine = checkWin(board, currentPlayer);
@@ -783,14 +785,31 @@ function animate() {
 
   for (const b of beads) {
     if (b.landed) continue;
-    b.velocity += 0.025;
-    b.mesh.position.y -= b.velocity;
-    if (b.mesh.position.y <= b.targetY) {
-      b.mesh.position.y = b.targetY;
-      if (b.velocity > 0.15) b.velocity = -b.velocity * 0.35;
-      else {
-        b.velocity = 0;
+    if (!b.settling) {
+      // 物理階段：自由落體 + bounce 衰減
+      b.velocity += 0.025;
+      b.mesh.position.y -= b.velocity;
+      if (b.mesh.position.y <= b.targetY) {
+        b.mesh.position.y = b.targetY;
+        if (b.velocity > 0.15) {
+          b.velocity = -b.velocity * 0.35;
+        } else {
+          // 衰減完成 → 進入 settling 階段（0.3s 阻尼微震取代直接 landed）
+          b.settling = true;
+          b.settleStart = performance.now();
+          b.velocity = 0;
+        }
+      }
+    } else {
+      // Settling 階段：sin 震動 + ease-out cubic 衰減（沉穩落地儀式）
+      const t = (performance.now() - b.settleStart) / 300;
+      if (t >= 1) {
+        b.mesh.position.y = b.targetY;
+        b.settling = false;
         b.landed = true;
+      } else {
+        const decay = Math.pow(1 - t, 3);
+        b.mesh.position.y = b.targetY + Math.sin(t * Math.PI * 6) * 0.015 * decay;
       }
     }
   }
@@ -818,6 +837,7 @@ function animate() {
   // 勝方棋珠微飄浮（sine wave ±0.04y）
   for (const b of winningBeads) {
     if (!b.isWinning || b.floatBase === undefined) continue;
+    if (b.settling) continue; // settling 中的珠不應被浮動覆蓋（雙保險）
     const t = performance.now() * 0.0018;
     b.mesh.position.y = b.floatBase + Math.sin(t + (b.x + b.z) * 0.5) * 0.04;
   }
