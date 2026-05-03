@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { newBoard, columnHeight, isBoardFull, SIZE } from './game/board.js';
 import { checkWin } from './game/check-win.js';
+import { screenDirToBoardDir } from './game/screen-dir.js';
 
 /* ============================================================
    遊戲邏輯
@@ -554,40 +555,6 @@ function updateCursor() {
   if (nextY >= SIZE) previewBead.material.opacity = 0;
 }
 
-// 視角感知：把螢幕上的方向鍵向量，投影到棋盤的 X/Z 軸
-// 回傳 {dx, dz}，分別是棋盤座標的位移（-1, 0, 1）
-function screenDirToBoardDir(screenDx, screenDz) {
-  // 相機在水平面上的朝向（從相機指向原點的反方向，即視線反向）
-  // 相機看向 (0,0,0)，所以視線方向 = -camera.position（投影到 xz 平面）
-  const viewX = -camera.position.x;
-  const viewZ = -camera.position.z;
-  const len = Math.hypot(viewX, viewZ);
-  if (len < 0.001) {
-    // 接近正上方視角：直接按棋盤軸
-    return { dx: screenDx, dz: screenDz };
-  }
-  // 螢幕「上」對應到視線方向（往畫面深處）
-  const forwardX = viewX / len;
-  const forwardZ = viewZ / len;
-  // 螢幕「右」對應到視線右側（forward 順時針旋轉 90°）
-  const rightX = forwardZ;
-  const rightZ = -forwardX;
-
-  // 螢幕方向向量（screenDz 是「上下」軸：上=+1 表示往畫面深處）
-  const wx = rightX * screenDx + forwardX * screenDz;
-  const wz = rightZ * screenDx + forwardZ * screenDz;
-
-  // 取絕對值較大的軸；若兩軸接近則維持方向，避免抖動
-  let dx = 0,
-    dz = 0;
-  if (Math.abs(wx) > Math.abs(wz)) {
-    dx = wx > 0 ? 1 : -1;
-  } else {
-    dz = wz > 0 ? 1 : -1;
-  }
-  return { dx, dz };
-}
-
 function moveSelection(screenDx, screenDz) {
   if (!selected) {
     // 第一次按方向鍵：從棋盤中央附近的格子開始
@@ -595,7 +562,7 @@ function moveSelection(screenDx, screenDz) {
     updateCursor();
     return;
   }
-  const { dx, dz } = screenDirToBoardDir(screenDx, screenDz);
+  const { dx, dz } = screenDirToBoardDir(camera, screenDx, screenDz);
   const nx = Math.max(0, Math.min(SIZE - 1, selected.x + dx));
   const nz = Math.max(0, Math.min(SIZE - 1, selected.z + dz));
   selected = { x: nx, z: nz };
