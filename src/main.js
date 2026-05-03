@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { newBoard, columnHeight, isBoardFull, SIZE } from './game/board.js';
-import { WIN_LINES } from './game/win-lines.js';
+import { checkWin } from './game/check-win.js';
 
 /* ============================================================
    遊戲邏輯
@@ -19,12 +19,6 @@ const BOARD_VISUAL_CENTER = (BOARD_MIN_Y + BOARD_MAX_Y) / 2; // 真正幾何中�
 
 let board, currentPlayer, moveHistory, gameOver, scores;
 let selected = null; // 鍵盤選取的格子 {x, z}，null 表示未啟用
-
-function checkWin(player) {
-  for (const line of WIN_LINES)
-    if (line.every(([x, y, z]) => board[x][z][y] === player)) return line;
-  return null;
-}
 
 /* ============================================================
    Three.js
@@ -371,7 +365,7 @@ function tryDrop(x, z) {
     landed: false,
   });
 
-  const winLine = checkWin(currentPlayer);
+  const winLine = checkWin(board, currentPlayer);
   if (winLine) {
     gameOver = true;
     setTimeout(() => highlightWinLine(winLine), 600);
@@ -438,7 +432,7 @@ function undoMove() {
   if (gameOver && overlay.classList.contains('show')) {
     overlay.classList.remove('show');
     if (moveHistory.length > 0) {
-      const lastWin = checkWin(moveHistory[moveHistory.length - 1].player);
+      const lastWin = checkWin(board, moveHistory[moveHistory.length - 1].player);
       if (lastWin) {
         scores[moveHistory[moveHistory.length - 1].player]--;
         updateScoreboard();
