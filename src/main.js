@@ -49,16 +49,16 @@ scene.add(new THREE.AmbientLight(0xfff5e8, 0.55));
 const keyLight = new THREE.DirectionalLight(0xfff2dc, 1.05);
 keyLight.position.set(6, 12, 4);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
+// 4096 解析度（從 2048 升）：抗 shadow acne 的根本辦法、不靠偏移技巧
+keyLight.shadow.mapSize.set(4096, 4096);
 keyLight.shadow.camera.left = -10;
 keyLight.shadow.camera.right = 10;
 keyLight.shadow.camera.top = 10;
 keyLight.shadow.camera.bottom = -10;
-// 球體 self-shadowing 修正：bias 加深 + normalBias 沿法線偏移（對曲面最有效）
-// 修復「棋珠陰影中央破洞 + 棋珠疊加陰影破洞」shadow acne
-keyLight.shadow.bias = -0.0015;
-keyLight.shadow.normalBias = 0.02;
-keyLight.shadow.radius = 2.5; // 從 4 降到 2.5，避免過軟放大 acne
+// 不用 normalBias（會把柱子陰影沿法線推離柱底、看起來像浮空）
+// 純靠 bias 微調 + 高解析度 shadow map 解 acne
+keyLight.shadow.bias = -0.0008;
+keyLight.shadow.radius = 3;
 scene.add(keyLight);
 
 // 補光：稍微帶一點冷色，模擬天光（ACES 黑場壓縮會吃掉它，反而需要保住）
