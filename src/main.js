@@ -576,6 +576,7 @@ function newGame(keepScore = true) {
   if (!keepScore) scores = { 1: 0, 2: 0 };
 
   hideWinnerCard();
+  hideRules();
   selected = null;
   updateCursor();
   updateTurnUI();
@@ -603,16 +604,41 @@ document.getElementById('btn-reset-view').addEventListener('click', resetView);
 document.getElementById('winner-replay').addEventListener('click', () => newGame(true));
 document.getElementById('winner-close').addEventListener('click', hideWinnerCard);
 document.getElementById('winner-view').addEventListener('click', hideWinnerCard);
-document.getElementById('btn-rules').addEventListener('click', () => {
-  alert(
-    '方垛式四子棋（Score Four）\n\n' +
-      '· 棋盤為 4×4×4 立柱結構，共 16 根柱子，每柱可放 4 顆棋珠。\n' +
-      '· 雙方輪流選一根未滿的柱子，棋珠因重力落到該柱最底空位。\n' +
-      '· 率先在三維空間中任一方向（橫、直、斜，含跨層對角線）連成 4 顆同色者勝。\n' +
-      '· 共 76 條獲勝線。\n\n' +
-      '操作：點選柱子落子，使用右下角控制桿調整視角，滾輪可縮放。'
-  );
-});
+/* === 規則說明 overlay === */
+const RULES_SEEN_KEY = 'score-four:rules-seen';
+const rulesOverlay = document.getElementById('rules-overlay');
+
+function showRules() {
+  rulesOverlay.hidden = false;
+}
+function hideRules() {
+  // 只有真的從 visible → hidden 才標記已讀
+  // 避免 init 時 newGame() 順手呼叫 hideRules 也被當成「使用者關閉」
+  if (rulesOverlay.hidden) return;
+  rulesOverlay.hidden = true;
+  try {
+    localStorage.setItem(RULES_SEEN_KEY, '1');
+  } catch {
+    // localStorage 失敗（例如 Safari 私密模式）：忽略，下次仍會自動跳
+  }
+}
+function isRulesOpen() {
+  return !rulesOverlay.hidden;
+}
+
+document.getElementById('btn-rules').addEventListener('click', showRules);
+document.getElementById('rules-close').addEventListener('click', hideRules);
+document.getElementById('rules-backdrop').addEventListener('click', hideRules);
+
+function maybeAutoShowRules() {
+  // 首次造訪：自動彈出一次（在 newGame init 之後呼叫，避免被 newGame 內的 hideRules 蓋掉）
+  try {
+    if (!localStorage.getItem(RULES_SEEN_KEY)) showRules();
+  } catch {
+    // localStorage 失敗（Safari 私密模式等）：每次造訪都自動跳，不阻擋
+    showRules();
+  }
+}
 
 /* ============================================================
    鍵盤選取
@@ -705,8 +731,10 @@ document.addEventListener('keydown', (e) => {
       confirmSelection();
       break;
     case 'Escape':
-      // 優先關掉勝負卡片（如果開著）；否則取消鍵盤選取
-      if (gameOver && !document.getElementById('winner-card').hidden) {
+      // 優先序：規則 overlay > 勝負卡片 > 取消鍵盤選取
+      if (isRulesOpen()) {
+        hideRules();
+      } else if (gameOver && !document.getElementById('winner-card').hidden) {
         hideWinnerCard();
       } else {
         selected = null;
@@ -801,6 +829,7 @@ if (typeof ResizeObserver !== 'undefined') {
 
 scores = { 1: 0, 2: 0 };
 newGame(false);
+maybeAutoShowRules();
 // 延後初始化以等 grid 佈局穩定
 requestAnimationFrame(() => {
   onResize();
