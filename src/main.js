@@ -82,11 +82,69 @@ floor.position.y = FLOOR_Y;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// 細格線：很淡的木紋暗示
+/**
+ * 程序生成木紋紋理：noise + 沿 x 軸的細直線（年輪暗示）。
+ * 純 canvas、無外部資源、無 shader。
+ * @returns {THREE.CanvasTexture}
+ */
+function createWoodTexture() {
+  const SIZE_PX = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE_PX;
+  canvas.height = SIZE_PX;
+  const ctx = canvas.getContext('2d');
+  // 透明底（疊在 floor 上面）
+  ctx.clearRect(0, 0, SIZE_PX, SIZE_PX);
+  // Step 1：低頻 noise（紙纖維/木屑質感）
+  const img = ctx.createImageData(SIZE_PX, SIZE_PX);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random();
+    const alpha = v < 0.6 ? 0 : Math.floor((v - 0.6) * 80); // 0..32 透明度
+    img.data[i] = 90; // 深咖啡 R
+    img.data[i + 1] = 70;
+    img.data[i + 2] = 50;
+    img.data[i + 3] = alpha;
+  }
+  ctx.putImageData(img, 0, 0);
+  // Step 2：年輪細線（沿 x 軸隨機間距、極淡）
+  ctx.strokeStyle = 'rgba(120, 90, 60, 0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 24; i++) {
+    const y = Math.random() * SIZE_PX;
+    const wobble = Math.random() * 6 - 3;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(SIZE_PX * 0.33, y + wobble, SIZE_PX * 0.66, y - wobble, SIZE_PX, y);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// 木紋層：覆蓋在 floor 上方，添加質感層次
+const woodPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({
+    map: createWoodTexture(),
+    transparent: true,
+    roughness: 0.85,
+    metalness: 0,
+  })
+);
+woodPlane.rotation.x = -Math.PI / 2;
+woodPlane.position.y = FLOOR_Y + 0.005;
+woodPlane.receiveShadow = true;
+scene.add(woodPlane);
+
+// 細格線：很淡的木紋暗示（紋理層之上、淡化避免打架）
 const grid = new THREE.GridHelper(20, 20, 0xc8b394, 0xd4c4a8);
 grid.position.y = FLOOR_Y + 0.01;
 grid.material.transparent = true;
-grid.material.opacity = 0.35;
+grid.material.opacity = 0.2; // 木紋紋理已提供質感、grid 線淡化避免打架
 scene.add(grid);
 
 /* ============================================================
