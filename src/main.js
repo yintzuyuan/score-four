@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { newBoard, columnHeight, isBoardFull, SIZE } from './game/board.js';
 import { checkWin } from './game/check-win.js';
 import { screenDirToBoardDir } from './game/screen-dir.js';
@@ -209,77 +210,58 @@ const beadMat2 = new THREE.MeshStandardMaterial({
 const beads = [];
 
 /* ============================================================
-   視角：球座標，永遠看向 (0,0,0)
+   視角：OrbitControls（拖拽旋轉、滾輪/雙指縮放、鍵盤微調）
    ============================================================ */
-const view = {
-  radius: 14,
-  hAngle: 45,
-  vAngle: 25,
-  defaultH: 45,
-  defaultV: 25,
-  defaultR: 14,
-};
 
-function applyView() {
-  const h = THREE.MathUtils.degToRad(view.hAngle);
-  const v = THREE.MathUtils.degToRad(view.vAngle);
-  const r = view.radius;
-  camera.position.x = r * Math.cos(v) * Math.sin(h);
-  camera.position.y = r * Math.sin(v);
-  camera.position.z = r * Math.cos(v) * Math.cos(h);
+// 預設視角：方位角 45°、仰角 25°、距離 14（與原型一致）
+const DEFAULT_AZIMUTH_DEG = 45;
+const DEFAULT_POLAR_DEG = 90 - 25; // OrbitControls polar 從 +Y 軸算起
+const DEFAULT_RADIUS = 14;
+
+function setInitialCameraPosition() {
+  const azimuth = THREE.MathUtils.degToRad(DEFAULT_AZIMUTH_DEG);
+  const polar = THREE.MathUtils.degToRad(DEFAULT_POLAR_DEG);
+  camera.position.setFromSphericalCoords(DEFAULT_RADIUS, polar, azimuth);
   camera.lookAt(0, 0, 0);
 }
+setInitialCameraPosition();
 
-const sliderH = document.getElementById('slider-h');
-const sliderV = document.getElementById('slider-v');
-const hVal = document.getElementById('h-val');
-const vVal = document.getElementById('v-val');
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false; // 不允許平移，避免拖出視野
+controls.minDistance = 8;
+controls.maxDistance = 24;
+controls.minPolarAngle = THREE.MathUtils.degToRad(5); // 避免穿透天頂
+controls.maxPolarAngle = THREE.MathUtils.degToRad(85); // 避免低於地板水平面
+controls.zoomSpeed = 0.6;
+controls.rotateSpeed = 0.7;
+controls.saveState(); // 記錄初始狀態為 reset 目標
 
-function syncSliders() {
-  sliderH.value = view.hAngle;
-  sliderV.value = view.vAngle;
-  hVal.textContent = `${Math.round(view.hAngle)}°`;
-  vVal.textContent = `${Math.round(view.vAngle)}°`;
-}
-
-sliderH.addEventListener('input', (e) => {
-  view.hAngle = parseFloat(e.target.value);
-  hVal.textContent = `${Math.round(view.hAngle)}°`;
-  applyView();
+// 拖拽期間關掉 hover ring（避免動到柱子的 hover 提示）
+let isDraggingView = false;
+controls.addEventListener('start', () => {
+  isDraggingView = true;
 });
-sliderV.addEventListener('input', (e) => {
-  view.vAngle = parseFloat(e.target.value);
-  vVal.textContent = `${Math.round(view.vAngle)}°`;
-  applyView();
+controls.addEventListener('end', () => {
+  isDraggingView = false;
 });
-
-renderer.domElement.addEventListener(
-  'wheel',
-  (e) => {
-    e.preventDefault();
-    view.radius = THREE.MathUtils.clamp(view.radius + e.deltaY * 0.01, 8, 24);
-    applyView();
-  },
-  { passive: false }
-);
 
 function resetView() {
-  const startH = view.hAngle,
-    startV = view.vAngle,
-    startR = view.radius;
-  const t0 = performance.now();
-  const dur = 500;
-  function step() {
-    const t = Math.min(1, (performance.now() - t0) / dur);
-    const e = 1 - Math.pow(1 - t, 3);
-    view.hAngle = startH + (view.defaultH - startH) * e;
-    view.vAngle = startV + (view.defaultV - startV) * e;
-    view.radius = startR + (view.defaultR - startR) * e;
-    syncSliders();
-    applyView();
-    if (t < 1) requestAnimationFrame(step);
-  }
-  step();
+  controls.reset();
+}
+
+// 鍵盤旋轉：[ 逆時針、] 順時針，每按一次 azimuth ±15°
+const KEY_ROTATE_STEP_DEG = 15;
+function rotateAzimuthByKey(deg) {
+  const offset = camera.position.clone().sub(controls.target);
+  const spherical = new THREE.Spherical().setFromVector3(offset);
+  spherical.theta += THREE.MathUtils.degToRad(deg);
+  offset.setFromSpherical(spherical);
+  camera.position.copy(controls.target).add(offset);
+  camera.lookAt(controls.target);
+  controls.update();
 }
 
 /* ============================================================
@@ -308,6 +290,15 @@ function getPickedPole() {
 
 function onPointerMove(event) {
   if (gameOver) return;
+  // 拖拽視角時不顯示 hover（避免誤導使用者）
+  if (isDraggingView) {
+    if (hoveredPole) {
+      hoveredPole.hoverRing.material.opacity = 0;
+      hoveredPole = null;
+    }
+    renderer.domElement.style.cursor = 'grabbing';
+    return;
+  }
   updatePointer(event);
   const pole = getPickedPole();
   if (pole !== hoveredPole) {
@@ -317,7 +308,7 @@ function onPointerMove(event) {
       hoveredPole.hoverRing.material.opacity = 0.7;
   }
   renderer.domElement.style.cursor =
-    pole && columnHeight(board, pole.x, pole.z) < SIZE ? 'pointer' : 'default';
+    pole && columnHeight(board, pole.x, pole.z) < SIZE ? 'pointer' : 'grab';
 }
 
 function onClick(event) {
@@ -621,6 +612,12 @@ document.addEventListener('keydown', (e) => {
     case 'N':
       newGame(true);
       break;
+    case '[':
+      rotateAzimuthByKey(-KEY_ROTATE_STEP_DEG);
+      break;
+    case ']':
+      rotateAzimuthByKey(KEY_ROTATE_STEP_DEG);
+      break;
   }
 });
 
@@ -649,6 +646,7 @@ function animate() {
     hoveredPole.hoverRing.material.opacity = 0.5 + Math.sin(t) * 0.25;
   }
 
+  controls.update(); // damping 需要每幀 update
   renderer.render(scene, camera);
 }
 
@@ -658,7 +656,6 @@ function onResize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, true);
-  applyView();
 }
 window.addEventListener('resize', onResize);
 // 用 ResizeObserver 監聽 canvas 容器本身的尺寸變化（grid 佈局下更可靠）
@@ -669,11 +666,6 @@ if (typeof ResizeObserver !== 'undefined') {
 
 scores = { 1: 0, 2: 0 };
 newGame(false);
-sliderH.value = view.defaultH;
-sliderV.value = view.defaultV;
-view.hAngle = view.defaultH;
-view.vAngle = view.defaultV;
-syncSliders();
 // 延後初始化以等 grid 佈局穩定
 requestAnimationFrame(() => {
   onResize();
