@@ -209,6 +209,10 @@ const beadMat2 = new THREE.MeshStandardMaterial({
 
 const beads = [];
 
+// 勝負視覺：連線本體 + 高亮中的棋珠 ref
+let winLineMesh = null;
+let winningBeads = [];
+
 /* ============================================================
    視角：OrbitControls（拖拽旋轉、滾輪/雙指縮放、鍵盤微調）
    ============================================================ */
@@ -360,8 +364,9 @@ function tryDrop(x, z) {
   const winLine = checkWin(board, currentPlayer);
   if (winLine) {
     gameOver = true;
-    setTimeout(() => highlightWinLine(winLine), 600);
-    setTimeout(() => showWinner(currentPlayer), 1100);
+    const winningPlayer = currentPlayer;
+    setTimeout(() => highlightWinLine(winLine, winningPlayer), 600);
+    setTimeout(() => showWinner(winningPlayer), 1100);
     scores[currentPlayer]++;
     updateScoreboard();
   } else if (isBoardFull(board)) {
@@ -374,45 +379,89 @@ function tryDrop(x, z) {
   }
 }
 
-function highlightWinLine(line) {
-  const winningBeads = beads.filter((b) =>
-    line.some(([x, y, z]) => b.x === x && b.y === y && b.z === z)
-  );
+/** 沿勝方四顆棋珠中心建立光帶（THREE.Line）。 */
+function buildWinLineMesh(line, color) {
+  const points = line.map(([x, y, z]) => {
+    const px = (x - (SIZE - 1) / 2) * SPACING;
+    const pz = (z - (SIZE - 1) / 2) * SPACING;
+    const py = y * SPACING + BEAD_R + 0.05;
+    return new THREE.Vector3(px, py, pz);
+  });
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.85,
+  });
+  return new THREE.Line(geometry, material);
+}
+
+function highlightWinLine(line, player) {
+  const baseColor = player === 1 ? 0xc84238 : 0x3a7ca5;
+  // 1. 找出勝方四顆棋珠並逐一發光放大（依序動畫，引導視線）
+  winningBeads = beads.filter((b) => line.some(([x, y, z]) => b.x === x && b.y === y && b.z === z));
   winningBeads.forEach((b, i) => {
     setTimeout(() => {
-      // 用棋子本色發光，並放大
-      const baseColor = b.player === 1 ? 0xc84238 : 0x3a7ca5;
       b.mesh.material.emissive = new THREE.Color(baseColor);
       b.mesh.material.emissiveIntensity = 0.6;
       b.mesh.scale.setScalar(1.18);
     }, i * 120);
   });
+  // 2. 四顆都亮起後，加上連線光帶
+  setTimeout(() => {
+    winLineMesh = buildWinLineMesh(line, baseColor);
+    boardGroup.add(winLineMesh);
+  }, winningBeads.length * 120);
+}
+
+/** 清除勝負視覺（連線 + 棋珠發光）。新局或悔棋時呼叫。 */
+function clearWinHighlight() {
+  if (winLineMesh) {
+    boardGroup.remove(winLineMesh);
+    winLineMesh.geometry.dispose();
+    winLineMesh.material.dispose();
+    winLineMesh = null;
+  }
+  winningBeads.forEach((b) => {
+    if (!b.mesh.material) return;
+    b.mesh.material.emissive = new THREE.Color(0x000000);
+    b.mesh.material.emissiveIntensity = 0;
+    b.mesh.scale.setScalar(1);
+  });
+  winningBeads = [];
 }
 
 function showWinner(player) {
-  const overlay = document.getElementById('winner-overlay');
   const card = document.getElementById('winner-card');
   const eyebrow = document.getElementById('winner-eyebrow');
   const title = document.getElementById('winner-title');
   const sub = document.getElementById('winner-sub');
+  const viewBtn = document.getElementById('winner-view');
   card.classList.remove('p1', 'p2', 'draw');
   if (player === 1) {
     card.classList.add('p1');
     eyebrow.textContent = 'VICTORY · 勝負已分';
     title.textContent = '朱方勝';
     sub.textContent = `第 ${moveHistory.length} 手 連成一線`;
+    viewBtn.hidden = false;
   } else if (player === 2) {
     card.classList.add('p2');
     eyebrow.textContent = 'VICTORY · 勝負已分';
     title.textContent = '青方勝';
     sub.textContent = `第 ${moveHistory.length} 手 連成一線`;
+    viewBtn.hidden = false;
   } else {
     card.classList.add('draw');
     eyebrow.textContent = 'DRAW · 棋盤已滿';
     title.textContent = '和局';
     sub.textContent = '64 子俱滿 無人連線';
+    viewBtn.hidden = true; // 和局沒連線，無棋盤可檢視
   }
-  overlay.classList.add('show');
+  card.hidden = false;
+}
+
+function hideWinnerCard() {
+  document.getElementById('winner-card').hidden = true;
 }
 
 /* ============================================================
@@ -420,16 +469,15 @@ function showWinner(player) {
    ============================================================ */
 function undoMove() {
   if (moveHistory.length === 0) return;
-  const overlay = document.getElementById('winner-overlay');
-  if (gameOver && overlay.classList.contains('show')) {
-    overlay.classList.remove('show');
-    if (moveHistory.length > 0) {
-      const lastWin = checkWin(board, moveHistory[moveHistory.length - 1].player);
-      if (lastWin) {
-        scores[moveHistory[moveHistory.length - 1].player]--;
-        updateScoreboard();
-      }
+  if (gameOver) {
+    // 從勝負狀態悔棋：扣回剛加的分、清掉勝負視覺與卡片
+    const lastWin = checkWin(board, moveHistory[moveHistory.length - 1].player);
+    if (lastWin) {
+      scores[moveHistory[moveHistory.length - 1].player]--;
+      updateScoreboard();
     }
+    hideWinnerCard();
+    clearWinHighlight();
   }
   gameOver = false;
 
@@ -444,11 +492,6 @@ function undoMove() {
     b.mesh.material.dispose();
     beads.splice(idx, 1);
   }
-  beads.forEach((b) => {
-    b.mesh.material.emissive = new THREE.Color(0x000000);
-    b.mesh.material.emissiveIntensity = 0;
-    b.mesh.scale.setScalar(1);
-  });
 
   currentPlayer = last.player;
   updateTurnUI();
@@ -456,6 +499,7 @@ function undoMove() {
 }
 
 function newGame(keepScore = true) {
+  clearWinHighlight();
   beads.forEach((b) => {
     boardGroup.remove(b.mesh);
     b.mesh.geometry.dispose();
@@ -469,7 +513,7 @@ function newGame(keepScore = true) {
   gameOver = false;
   if (!keepScore) scores = { 1: 0, 2: 0 };
 
-  document.getElementById('winner-overlay').classList.remove('show');
+  hideWinnerCard();
   selected = null;
   updateCursor();
   updateTurnUI();
@@ -495,6 +539,8 @@ document.getElementById('btn-new').addEventListener('click', () => newGame(true)
 document.getElementById('btn-undo').addEventListener('click', undoMove);
 document.getElementById('btn-reset-view').addEventListener('click', resetView);
 document.getElementById('winner-replay').addEventListener('click', () => newGame(true));
+document.getElementById('winner-close').addEventListener('click', hideWinnerCard);
+document.getElementById('winner-view').addEventListener('click', hideWinnerCard);
 document.getElementById('btn-rules').addEventListener('click', () => {
   alert(
     '方垛式四子棋（Score Four）\n\n' +
@@ -597,8 +643,13 @@ document.addEventListener('keydown', (e) => {
       confirmSelection();
       break;
     case 'Escape':
-      selected = null;
-      updateCursor();
+      // 優先關掉勝負卡片（如果開著）；否則取消鍵盤選取
+      if (gameOver && !document.getElementById('winner-card').hidden) {
+        hideWinnerCard();
+      } else {
+        selected = null;
+        updateCursor();
+      }
       break;
     case 'z':
     case 'Z':
@@ -644,6 +695,12 @@ function animate() {
   if (hoveredPole && !gameOver) {
     const t = performance.now() * 0.003;
     hoveredPole.hoverRing.material.opacity = 0.5 + Math.sin(t) * 0.25;
+  }
+
+  // 勝負連線：脈動引導視線
+  if (winLineMesh) {
+    const t = performance.now() * 0.003;
+    winLineMesh.material.opacity = 0.7 + Math.sin(t * 1.5) * 0.2;
   }
 
   controls.update(); // damping 需要每幀 update

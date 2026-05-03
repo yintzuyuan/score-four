@@ -44,12 +44,14 @@
 
   <div class="hud tl-sub" id="status-msg">拖拽旋轉視角 · 點選柱底落子 · 方向鍵選取後 Enter</div>
 
-  <div class="winner-overlay" id="winner-overlay">
-    <div class="winner-card" id="winner-card">
-      <div class="winner-eyebrow" id="winner-eyebrow">勝負已分</div>
-      <div class="winner-title" id="winner-title">朱方勝</div>
-      <div class="winner-sub" id="winner-sub">連成一線</div>
+  <div class="winner-card-side" id="winner-card" hidden>
+    <button class="winner-close" id="winner-close" aria-label="關閉">×</button>
+    <div class="winner-eyebrow" id="winner-eyebrow">勝負已分</div>
+    <div class="winner-title" id="winner-title">朱方勝</div>
+    <div class="winner-sub" id="winner-sub">連成一線</div>
+    <div class="winner-actions">
       <button class="btn primary" id="winner-replay">再來一局</button>
+      <button class="btn" id="winner-view">檢視棋盤</button>
     </div>
   </div>
 </main>

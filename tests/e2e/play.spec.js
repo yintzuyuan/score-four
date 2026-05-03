@@ -104,9 +104,13 @@ test('完成同柱 4 連勝：朱方勝畫面顯示', async ({ page }) => {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
 
-  // 等獲勝動畫（main.js 在 600ms 後 highlight、1100ms 後顯示 overlay）
-  await expect(page.locator('#winner-overlay.show')).toBeVisible({ timeout: 3000 });
+  // 等獲勝動畫（main.js 在 600ms 後 highlight、1100ms 後顯示 winner-card）
+  await expect(page.locator('#winner-card')).toBeVisible({ timeout: 3000 });
   await expect(page.locator('#winner-title')).toHaveText('朱方勝');
   await expect(page.locator('#score-p1')).toHaveText('1');
   await expect(page.locator('#score-p2')).toHaveText('0');
+
+  // 「檢視棋盤」按鈕暫時隱藏卡片，連線本體仍在棋盤
+  await page.locator('#winner-view').click();
+  await expect(page.locator('#winner-card')).toBeHidden();
 });
