@@ -49,18 +49,13 @@ scene.add(new THREE.AmbientLight(0xfff5e8, 0.55));
 const keyLight = new THREE.DirectionalLight(0xfff2dc, 1.05);
 keyLight.position.set(6, 12, 4);
 keyLight.castShadow = true;
-// 4096 解析度（從 2048 升）：抗 shadow acne 的根本辦法、不靠偏移技巧
-keyLight.shadow.mapSize.set(4096, 4096);
+keyLight.shadow.mapSize.set(2048, 2048);
 keyLight.shadow.camera.left = -10;
 keyLight.shadow.camera.right = 10;
 keyLight.shadow.camera.top = 10;
 keyLight.shadow.camera.bottom = -10;
-// 不用 normalBias（會把柱子陰影沿法線推離柱底、看起來像浮空）
-// 純靠 bias 微調 + 高解析度 shadow map 解 acne
-keyLight.shadow.bias = -0.0008;
-// 球體投影到 floor 時的中央陰影：PCF blur 採樣會在最深處 false-negative
-// radius 從 3 降到 1：保留軟邊但減少 blur 範圍、避免中央破洞
-keyLight.shadow.radius = 1;
+keyLight.shadow.bias = -0.0005;
+keyLight.shadow.radius = 4;
 scene.add(keyLight);
 
 // 補光：稍微帶一點冷色，模擬天光（ACES 黑場壓縮會吃掉它，反而需要保住）
@@ -432,10 +427,7 @@ function tryDrop(x, z) {
   const mat = currentPlayer === 1 ? beadMat1 : beadMat2;
   const bead = new THREE.Mesh(new THREE.SphereGeometry(BEAD_R, 32, 24), mat.clone());
   bead.castShadow = true;
-  // 不接收陰影：球體曲面 + PCF blur 採樣在最深陰影處 false-negative，
-  // 造成「棋珠頂部接收上層投影時中央破洞」。代價是失去棋珠互投層次，
-  // 但 rim light + clearcoat 已強化堆疊辨識，可接受。
-  bead.receiveShadow = false;
+  bead.receiveShadow = true;
 
   const px = (x - (SIZE - 1) / 2) * SPACING;
   const pz = (z - (SIZE - 1) / 2) * SPACING;
