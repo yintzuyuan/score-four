@@ -4,11 +4,12 @@
  * - screenDx：螢幕「右(+1)/左(-1)」
  * - screenDz：螢幕「上(+1)/下(-1)」（dz=+1 為「往畫面深處」）
  *
- * 演算法（baseline，P1 行為）：
- * 1. 由相機朝原點的方向決定棋盤的「forward」軸
- * 2. 「right」= forward 順時針旋轉 90° → 注意此處方向約定可能與使用者期待不一致（P3c 處理）
+ * 演算法（P3c 修正後，right-handed Y-up）：
+ * 1. 由相機朝原點的方向決定棋盤的「forward」軸（投影到水平面）
+ * 2. 「right」= up × forward 的水平分量，等同 forward 逆時針旋轉 90°，
+ *    使從 +Z 看原點時「螢幕右 = 世界 +X」、從 +X 看原點時「螢幕右 = 世界 -Z」
  * 3. 將 (screenDx, screenDz) 投影到 (right, forward) 的世界座標
- * 4. 取絕對值較大的軸；兩軸接近時優先 dz（隱含偏好），可能造成 45° 邊界抖動（P3c 處理）
+ * 4. 取絕對值較大的軸；45° 邊界仍可能輕微抖動，hysteresis 留待後續 PR
  *
  * @param {{ position: { x: number, z: number } }} camera Three.js Camera-like 物件（只用 position.x/z）
  * @param {number} screenDx
@@ -28,9 +29,9 @@ export function screenDirToBoardDir(camera, screenDx, screenDz) {
   // 螢幕「上」對應到視線方向（往畫面深處）
   const forwardX = viewX / len;
   const forwardZ = viewZ / len;
-  // 螢幕「右」對應到視線右側（forward 順時針旋轉 90°）
-  const rightX = forwardZ;
-  const rightZ = -forwardX;
+  // 螢幕「右」=（世界 up = +Y）× forward 的水平分量 → forward 逆時針 90°
+  const rightX = -forwardZ;
+  const rightZ = forwardX;
 
   // 螢幕方向向量（screenDz 是「上下」軸：上=+1 表示往畫面深處）
   const wx = rightX * screenDx + forwardX * screenDz;
