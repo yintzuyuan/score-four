@@ -142,6 +142,15 @@ test('規則 overlay：ESC 關閉（優先於勝負/取消選取）', async ({ p
   await expect(page.locator('#rules-overlay')).toBeHidden();
 });
 
+test('規則 overlay：開著時按 N（新局）會一併關閉', async ({ page }) => {
+  await page.locator('#btn-rules').click();
+  await expect(page.locator('#rules-overlay')).toBeVisible();
+  // overlay 開著時觸發新局：應重置棋盤同時關閉 overlay（避免 overlay 遺留前景）
+  await page.keyboard.press('n');
+  await expect(page.locator('#rules-overlay')).toBeHidden();
+  await expect(page.locator('#turn-num')).toHaveText('第 1 手');
+});
+
 test('規則 overlay：點背景關閉', async ({ page }) => {
   await page.locator('#btn-rules').click();
   await expect(page.locator('#rules-overlay')).toBeVisible();

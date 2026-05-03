@@ -576,6 +576,7 @@ function newGame(keepScore = true) {
   if (!keepScore) scores = { 1: 0, 2: 0 };
 
   hideWinnerCard();
+  hideRules();
   selected = null;
   updateCursor();
   updateTurnUI();
@@ -611,8 +612,10 @@ function showRules() {
   rulesOverlay.hidden = false;
 }
 function hideRules() {
+  // 只有真的從 visible → hidden 才標記已讀
+  // 避免 init 時 newGame() 順手呼叫 hideRules 也被當成「使用者關閉」
+  if (rulesOverlay.hidden) return;
   rulesOverlay.hidden = true;
-  // 任何方式關閉都標記已讀，避免下次造訪再自動跳
   try {
     localStorage.setItem(RULES_SEEN_KEY, '1');
   } catch {
@@ -627,14 +630,14 @@ document.getElementById('btn-rules').addEventListener('click', showRules);
 document.getElementById('rules-close').addEventListener('click', hideRules);
 document.getElementById('rules-backdrop').addEventListener('click', hideRules);
 
-// 首次造訪：自動彈出一次
-try {
-  if (!localStorage.getItem(RULES_SEEN_KEY)) {
+function maybeAutoShowRules() {
+  // 首次造訪：自動彈出一次（在 newGame init 之後呼叫，避免被 newGame 內的 hideRules 蓋掉）
+  try {
+    if (!localStorage.getItem(RULES_SEEN_KEY)) showRules();
+  } catch {
+    // localStorage 失敗（Safari 私密模式等）：每次造訪都自動跳，不阻擋
     showRules();
   }
-} catch {
-  // localStorage 失敗：每次造訪都自動跳，不阻擋
-  showRules();
 }
 
 /* ============================================================
@@ -826,6 +829,7 @@ if (typeof ResizeObserver !== 'undefined') {
 
 scores = { 1: 0, 2: 0 };
 newGame(false);
+maybeAutoShowRules();
 // 延後初始化以等 grid 佈局穩定
 requestAnimationFrame(() => {
   onResize();
